@@ -1,0 +1,14 @@
+# Build artifacts
+build/
+*.o
+*.out
+
+# Tooling & LSP
+compile_commands.json
+.clangd
+
+# Experimental code
+experimental/
+
+# Cache
+.cache
