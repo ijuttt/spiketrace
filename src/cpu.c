@@ -57,3 +57,43 @@ spkt_status_t get_curr_stats(struct curr_stat *curr, int max_cores) {
   fclose(stat_fp);
   return (cores_found > 0) ? SPKT_OK : SPKT_ERR_GET_CPU_STAT;
 }
+
+// helper to calculate total jiffies
+static inline unsigned long long total_jiffies(const struct curr_stat *s) {
+  return s->user + s->nice + s->system + s->idle + s->iowait + s->irq +
+         s->softirq;
+}
+
+// helper to calculate idle jiffies
+static inline unsigned long long idle_jiffies(const struct curr_stat *s) {
+  return s->idle + s->iowait;
+}
+
+spkt_status_t cpu_calc_usage_delta_batch(const struct curr_stat *prev,
+                                         const struct curr_stat *curr,
+                                         int num_cores, double *out_usage) {
+
+  if (!prev || !curr || !out_usage || num_cores <= 0) {
+    return SPKT_ERR_INVALID_PARAM;
+  }
+
+  for (int i = 0; i < num_cores; i++) {
+    unsigned long long total_curr = total_jiffies(&curr[i]);
+    unsigned long long total_prev = total_jiffies(&prev[i]);
+
+    unsigned long long idle_curr = idle_jiffies(&curr[i]);
+    unsigned long long idle_prev = idle_jiffies(&prev[i]);
+
+    unsigned long long total_diff = total_curr - total_prev;
+    unsigned long long idle_diff = idle_curr - idle_prev;
+
+    if (total_diff == 0 || idle_diff > total_diff) {
+      out_usage[i] = 0.0;
+      continue;
+    }
+
+    double idle_ratio = (double)idle_diff / total_diff;
+    out_usage[i] = (1.0 - idle_ratio) * 100.0;
+  }
+  return SPKT_OK;
+}
