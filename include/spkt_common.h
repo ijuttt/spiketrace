@@ -1,6 +1,7 @@
 #ifndef SPKT_COMMON_H
 #define SPKT_COMMON_H
 
+/* Return status codes grouped by module */
 typedef enum {
   SPKT_OK = 0,
 
