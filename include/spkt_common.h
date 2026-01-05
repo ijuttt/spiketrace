@@ -3,18 +3,14 @@
 
 typedef enum {
   SPKT_OK = 0,
-  SPKT_ERR_GET_CPU_STAT = -1,
-  SPKT_ERR_INVALID_PARAM = -2,
-} spkt_status_t;
 
-struct curr_stat {
-  unsigned long long user;
-  unsigned long long nice;
-  unsigned long long system;
-  unsigned long long idle;
-  unsigned long long iowait;
-  unsigned long long irq;
-  unsigned long long softirq;
-};
+  // CPU module errors
+  SPKT_ERR_CPU_OPEN_PROC = -100,
+  SPKT_ERR_CPU_PARSE_FAILED = -101,
+
+  // Generic errors
+  SPKT_ERR_INVALID_PARAM = -1,
+  SPKT_ERR_NULL_POINTER = -2,
+} spkt_status_t;
 
 #endif
