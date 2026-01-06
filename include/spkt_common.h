@@ -9,6 +9,10 @@ typedef enum {
   SPKT_ERR_CPU_OPEN_PROC = -100,
   SPKT_ERR_CPU_PARSE_FAILED = -101,
 
+  // Memory module errors
+  SPKT_ERR_MEM_OPEN_MEMINFO = -200,
+  SPKT_ERR_MEM_PARSE_FAILED = -201,
+
   // Generic errors
   SPKT_ERR_INVALID_PARAM = -1,
   SPKT_ERR_NULL_POINTER = -2,
