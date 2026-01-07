@@ -41,3 +41,35 @@ spkt_status_t ringbuf_cleanup(ringbuffer_t *rb) {
   pthread_mutex_destroy(&rb->lock);
   return SPKT_OK;
 }
+
+spkt_status_t ringbuf_push(ringbuffer_t *rb, const spkt_snapshot_t *snapshot) {
+  if (!rb || !snapshot) {
+    return SPKT_ERR_NULL_POINTER;
+  }
+
+  pthread_mutex_lock(&rb->lock);
+
+  // Ensure timestamp is set if not provided
+  spkt_snapshot_t snapshot_copy = *snapshot;
+  if (snapshot_copy.timestamp_monotonic_ns == 0) {
+    snapshot_copy.timestamp_monotonic_ns = get_monotonic_timestamp();
+  }
+
+  rb->snapshots[rb->tail] = snapshot_copy;
+
+  if (ringbuf_is_full(rb)) {
+    rb->head = (rb->head + 1) % SPKT_RINGBUF_CAPACITY;
+
+    if (!rb->overflow_warned) {
+      fprintf(stderr, "ringbuf: Buffer full, overwriting oldest entries\n");
+      rb->overflow_warned = true;
+    }
+  } else {
+    rb->count++;
+  }
+
+  rb->tail = (rb->tail + 1) % SPKT_RINGBUF_CAPACITY;
+
+  pthread_mutex_unlock(&rb->lock);
+  return SPKT_OK;
+}
