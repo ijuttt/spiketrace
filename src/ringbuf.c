@@ -127,3 +127,38 @@ spkt_status_t ringbuf_get_recent(const ringbuffer_t *rb, spkt_snapshot_t *dest,
   pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
   return SPKT_OK;
 }
+
+bool ringbuf_is_full(const ringbuffer_t *rb) {
+  if (!rb)
+    return true;
+  return rb->count == SPKT_RINGBUF_CAPACITY;
+}
+
+size_t ringbuf_count(const ringbuffer_t *rb) {
+  if (!rb)
+    return 0;
+
+  pthread_mutex_lock((pthread_mutex_t *)&rb->lock);
+  size_t count = rb->count;
+  pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
+
+  return count;
+}
+
+spkt_status_t ringbuf_clear(ringbuffer_t *rb) {
+  if (!rb) {
+    return SPKT_ERR_NULL_POINTER;
+  }
+
+  pthread_mutex_lock(&rb->lock);
+
+  rb->head = 0;
+  rb->tail = 0;
+  rb->count = 0;
+  rb->overflow_warned = false;
+
+  memset(rb->snapshots, 0, sizeof(rb->snapshots));
+
+  pthread_mutex_unlock(&rb->lock);
+  return SPKT_OK;
+}
