@@ -73,3 +73,57 @@ spkt_status_t ringbuf_push(ringbuffer_t *rb, const spkt_snapshot_t *snapshot) {
   pthread_mutex_unlock(&rb->lock);
   return SPKT_OK;
 }
+
+spkt_status_t ringbuf_get_all(const ringbuffer_t *rb, spkt_snapshot_t *dest,
+                              size_t max_count, size_t *out_count) {
+  if (!rb || !dest || !out_count) {
+    return SPKT_ERR_NULL_POINTER;
+  }
+
+  pthread_mutex_lock((pthread_mutex_t *)&rb->lock);
+
+  size_t count_to_copy = (max_count < rb->count) ? max_count : rb->count;
+  *out_count = count_to_copy;
+
+  if (count_to_copy == 0) {
+    pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
+    return SPKT_OK;
+  }
+
+  for (size_t i = 0; i < count_to_copy; i++) {
+    size_t idx = (rb->head + i) % SPKT_RINGBUF_CAPACITY;
+    dest[i] = rb->snapshots[idx];
+  }
+
+  pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
+  return SPKT_OK;
+}
+
+spkt_status_t ringbuf_get_recent(const ringbuffer_t *rb, spkt_snapshot_t *dest,
+                                 size_t n, size_t *out_count) {
+  if (!rb || !dest || !out_count) {
+    return SPKT_ERR_NULL_POINTER;
+  }
+
+  pthread_mutex_lock((pthread_mutex_t *)&rb->lock);
+
+  size_t available = rb->count;
+  size_t count_to_copy = (n < available) ? n : available;
+  *out_count = count_to_copy;
+
+  if (count_to_copy == 0) {
+    pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
+    return SPKT_OK;
+  }
+
+  // Copy in reverse chronological order (newest first)
+  for (size_t i = 0; i < count_to_copy; i++) {
+    // Calculate index: tail-1 is newest, tail-2 is second newest, etc.
+    size_t idx =
+        (rb->tail + SPKT_RINGBUF_CAPACITY - i - 1) % SPKT_RINGBUF_CAPACITY;
+    dest[i] = rb->snapshots[idx];
+  }
+
+  pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
+  return SPKT_OK;
+}
