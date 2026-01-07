@@ -10,97 +10,130 @@
 #define CPU_PREFIX "cpu"
 #define CPU_PREFIX_LEN 3
 #define LABEL_MAX 8
-#define LABEL_FMT "%7s"
-#define CPU_JIFFIES_FIELD_COUNT 7
 
-/* Read CPU jiffies from /proc/stat for all cores */
+/* Parse single CPU line from /proc/stat */
+static spkt_status_t parse_cpu_line(const char *line, struct cpu_jiffies *out) {
+  if (!line || !out) {
+    return SPKT_ERR_NULL_POINTER;
+  }
+
+  *out = (struct cpu_jiffies){0};
+
+  int scanned = sscanf(
+      line, "%*s %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu", &out->user,
+      &out->nice, &out->system, &out->idle, &out->iowait, &out->irq,
+      &out->softirq, &out->steal, &out->guest, &out->guest_nice);
+
+  return (scanned >= CPU_STAT_MIN_REQUIRED_FIELDS) ? SPKT_OK
+                                                   : SPKT_ERR_CPU_PARSE_FAILED;
+}
+
+/* Extract core number from label like "cpu0", "cpu1" */
+static int parse_core_num(const char *label) {
+  if (strcmp(label, CPU_PREFIX) == 0) {
+    return 0; // Total CPU
+  }
+
+  if (!isdigit((unsigned char)label[3])) {
+    return -1;
+  }
+
+  char *end = NULL;
+  long core = strtol(label + 3, &end, 10);
+
+  if (*end != '\0' || core < 0) {
+    return -1;
+  }
+
+  return (int)core + 1; // Offset by 1 (index 0 = total)
+}
+
 spkt_status_t cpu_read_jiffies(struct cpu_jiffies *jiffies, int max_cores) {
-  FILE *stat_fp = fopen(PROC_STAT_PATH, "r");
-  if (!stat_fp) {
+  if (!jiffies || max_cores <= 0) {
+    return SPKT_ERR_INVALID_PARAM;
+  }
+
+  FILE *fp = fopen(PROC_STAT_PATH, "r");
+  if (!fp) {
     return SPKT_ERR_CPU_OPEN_PROC;
   }
 
   char buf[STAT_BUFF];
   int parsed_count = 0;
 
-  while (fgets(buf, sizeof(buf), stat_fp)) {
-    // Check prefix "cpu"
-    if (strncmp(buf, CPU_PREFIX, CPU_PREFIX_LEN) != 0)
+  while (fgets(buf, sizeof(buf), fp)) {
+    // Stop when we hit non-cpu lines
+    if (strncmp(buf, CPU_PREFIX, CPU_PREFIX_LEN) != 0) {
       break;
-
-    char label[LABEL_MAX];
-    struct cpu_jiffies *target = NULL;
-
-    if (sscanf(buf, LABEL_FMT, label) != 1)
-      continue;
-
-    if (strcmp(label, CPU_PREFIX) == 0) {
-      target = &jiffies[0]; // TOTAL
-    } else if (label[3] && isdigit((unsigned char)label[3])) {
-      char *end = NULL;
-      long core_num = strtol(label + 3, &end, 10);
-
-      if (*end != '\0' || core_num < 0)
-        continue;
-      if (core_num + 1 >= max_cores)
-        continue;
-      target = &jiffies[core_num + 1];
     }
 
-    if (!target)
+    char label[LABEL_MAX] = {0};
+    if (sscanf(buf, "%7s", label) != 1) {
       continue;
+    }
 
-    int scanned =
-        sscanf(buf, "%*s %llu %llu %llu %llu %llu %llu %llu", &target->user,
-               &target->nice, &target->system, &target->idle, &target->iowait,
-               &target->irq, &target->softirq);
-
-    if (scanned != CPU_JIFFIES_FIELD_COUNT)
+    int idx = parse_core_num(label);
+    if (idx < 0 || idx >= max_cores) {
       continue;
+    }
 
-    parsed_count++;
+    if (parse_cpu_line(buf, &jiffies[idx]) == SPKT_OK) {
+      parsed_count++;
+    }
   }
 
-  fclose(stat_fp);
+  fclose(fp);
+
   return (parsed_count > 0) ? SPKT_OK : SPKT_ERR_CPU_PARSE_FAILED;
 }
 
-/* Sum all jiffies categories */
+/* Sum all jiffies
+ * Excluding 'guest' & 'guest_nice' to avoid double-counting
+ */
 static inline unsigned long long total_jiffies(const struct cpu_jiffies *j) {
   return j->user + j->nice + j->system + j->idle + j->iowait + j->irq +
-         j->softirq;
+         j->softirq + j->steal;
 }
 
-/* Sum idle + iowait */
+/* Sum idle categories */
 static inline unsigned long long idle_jiffies(const struct cpu_jiffies *j) {
   return j->idle + j->iowait;
 }
 
-/* Calculate CPU usage % = (1 - idle_delta/total_delta) * 100 */
 spkt_status_t cpu_calc_usage_pct_batch(const struct cpu_jiffies *old_jiffies,
                                        const struct cpu_jiffies *new_jiffies,
                                        int num_cores, double *out_usage) {
-  if (!old_jiffies || !new_jiffies || !out_usage || num_cores <= 0) {
+  if (!old_jiffies || !new_jiffies || !out_usage) {
+    return SPKT_ERR_NULL_POINTER;
+  }
+
+  if (num_cores <= 0) {
     return SPKT_ERR_INVALID_PARAM;
   }
 
-  for (int i = 1; i <= num_cores; i++) {
-    unsigned long long total_new = total_jiffies(&new_jiffies[i]);
-    unsigned long long total_old = total_jiffies(&old_jiffies[i]);
+  // Process per-core stats (skip index 0 which is total)
+  for (int i = 0; i < num_cores; i++) {
+    const struct cpu_jiffies *new_j = &new_jiffies[i + 1];
+    const struct cpu_jiffies *old_j = &old_jiffies[i + 1];
 
-    unsigned long long idle_new = idle_jiffies(&new_jiffies[i]);
-    unsigned long long idle_old = idle_jiffies(&old_jiffies[i]);
+    unsigned long long total_delta =
+        total_jiffies(new_j) - total_jiffies(old_j);
+    unsigned long long idle_delta = idle_jiffies(new_j) - idle_jiffies(old_j);
 
-    unsigned long long total_delta = total_new - total_old;
-    unsigned long long idle_delta = idle_new - idle_old;
-
-    if (total_delta == 0 || idle_delta > total_delta) {
-      out_usage[i - 1] = 0.0;
+    // Handle edge cases
+    if (total_delta == 0) {
+      out_usage[i] = 0.0;
       continue;
     }
 
-    double idle_ratio = (double)idle_delta / total_delta;
-    out_usage[i - 1] = (1.0 - idle_ratio) * 100.0;
+    // Sanity check: idle shouldn't exceed total
+    if (idle_delta > total_delta) {
+      out_usage[i] = 0.0;
+      continue;
+    }
+
+    double usage = 100.0 * (1.0 - (double)idle_delta / total_delta);
+    out_usage[i] = (usage < 0.0) ? 0.0 : (usage > 100.0) ? 100.0 : usage;
   }
 
   return SPKT_OK;
