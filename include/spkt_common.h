@@ -18,6 +18,10 @@ typedef enum {
   SPKT_ERR_RINGBUF_EMPTY = -301,
   SPKT_ERR_RINGBUF_LOCK_FAILED = -302,
 
+  // Process collector errors
+  SPKT_ERR_PROC_OPEN_DIR = -400,
+  SPKT_ERR_PROC_PARSE_FAILED = -401,
+
   // Generic errors
   SPKT_ERR_INVALID_PARAM = -1,
   SPKT_ERR_NULL_POINTER = -2,
