@@ -138,10 +138,10 @@ static int compare_samples(const void *a, const void *b) {
   if (!sb->valid)
     return -1;
 
-  // Sort by ticks descending (higher = more CPU)
-  if (sb->ticks > sa->ticks)
+  // Sort by cpu_pct descending
+  if (sb->cpu_pct > sa->cpu_pct)
     return 1;
-  if (sb->ticks < sa->ticks)
+  if (sb->cpu_pct < sa->cpu_pct)
     return -1;
 
   // Tiebreaker: RSS descending
@@ -179,13 +179,19 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
 
   // Get current total system ticks
   unsigned long long curr_total_ticks = read_total_system_ticks();
-  unsigned long long tick_delta = curr_total_ticks - ctx->last_total_ticks;
+
+  // Underflow protection
+  unsigned long long tick_delta = 0;
+  if (curr_total_ticks > ctx->last_total_ticks) {
+    tick_delta = curr_total_ticks - ctx->last_total_ticks;
+  }
 
   // First call - just establish baseline
   int is_first_call = (ctx->last_total_ticks == 0);
 
   // Temporary storage for current samples
   proc_sample_t curr_samples[PROC_MAX_TRACKED];
+  memset(curr_samples, 0, sizeof(curr_samples));
   size_t curr_count = 0;
 
   DIR *proc_dir = opendir(PROC_PATH);
@@ -208,6 +214,7 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
     proc_sample_t sample = {0};
     sample.pid = pid;
     sample.valid = 1;
+    sample.cpu_pct = 0.0;
 
     // Read process stats
     if (parse_proc_stat(pid, &sample.ticks, sample.comm, sizeof(sample.comm)) !=
@@ -217,6 +224,16 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
 
     if (parse_proc_statm(pid, &sample.rss_kib) != 0) {
       continue;
+    }
+
+    // Calculate CPU% directly in sample (fixes broken parallel array mapping)
+    if (!is_first_call && tick_delta > 0) {
+      proc_sample_t *prev = find_prev_sample(ctx, sample.pid);
+      if (prev && sample.ticks >= prev->ticks) {
+        unsigned long long proc_delta = sample.ticks - prev->ticks;
+        // Note: can exceed 100% on multi-core systems
+        sample.cpu_pct = 100.0 * (double)proc_delta / (double)tick_delta;
+      }
     }
 
     curr_samples[curr_count++] = sample;
@@ -229,48 +246,24 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
     return SPKT_OK;
   }
 
-  // Calculate CPU% for each process based on delta from previous sample
-  double cpu_pcts[PROC_MAX_TRACKED] = {0};
-
-  if (!is_first_call && tick_delta > 0) {
-    for (size_t i = 0; i < curr_count; i++) {
-      proc_sample_t *curr = &curr_samples[i];
-      proc_sample_t *prev = find_prev_sample(ctx, curr->pid);
-
-      if (prev && curr->ticks >= prev->ticks) {
-        unsigned long long proc_delta = curr->ticks - prev->ticks;
-        cpu_pcts[i] = 100.0 * (double)proc_delta / (double)tick_delta;
-
-        if (cpu_pcts[i] > 100.0) {
-          cpu_pcts[i] = 100.0;
-        }
-      }
-    }
-  }
-
-  proc_sample_t sorted[PROC_MAX_TRACKED];
-  memcpy(sorted, curr_samples, sizeof(sorted));
-
-  for (size_t i = 0; i < curr_count; i++) {
-    sorted[i].ticks = (unsigned long long)(cpu_pcts[i] * 1000000.0);
-  }
-
-  qsort(sorted, curr_count, sizeof(proc_sample_t), compare_samples);
+  // Sort by cpu_pct (now stored directly in sample, not abusing ticks field)
+  qsort(curr_samples, curr_count, sizeof(proc_sample_t), compare_samples);
 
   // Copy top processes to output
   size_t copy_count = (curr_count < MAX_PROCS) ? curr_count : MAX_PROCS;
   for (size_t i = 0; i < copy_count; i++) {
-    out->entries[i].pid = sorted[i].pid;
-    strncpy(out->entries[i].comm, sorted[i].comm,
+    out->entries[i].pid = curr_samples[i].pid;
+    strncpy(out->entries[i].comm, curr_samples[i].comm,
             sizeof(out->entries[i].comm) - 1);
     out->entries[i].comm[sizeof(out->entries[i].comm) - 1] = '\0';
-    out->entries[i].cpu_usage_pct = (double)sorted[i].ticks / 1000000.0;
-    out->entries[i].rss_kib = sorted[i].rss_kib;
+    out->entries[i].cpu_usage_pct = curr_samples[i].cpu_pct;
+    out->entries[i].rss_kib = curr_samples[i].rss_kib;
   }
   out->valid_entry_count = (uint32_t)copy_count;
 
-  // Update context for next call
-  memcpy(ctx->samples, curr_samples, sizeof(ctx->samples));
+  // Update context for next call (clear old samples first)
+  memset(ctx->samples, 0, sizeof(ctx->samples));
+  memcpy(ctx->samples, curr_samples, curr_count * sizeof(proc_sample_t));
   ctx->count = curr_count;
   ctx->last_total_ticks = curr_total_ticks;
 

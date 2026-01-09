@@ -12,8 +12,10 @@
 /* Single process sample for CPU delta calculation */
 typedef struct {
   int32_t pid;
-  unsigned long long ticks; /* utime + stime */
+  unsigned long long ticks; // utime + stime
   uint64_t rss_kib;
+  double cpu_pct; // calculated CPU% (0..100 per core, can exceed 100 on
+                  // multi-core)
   char comm[16];
   int valid;
 } proc_sample_t;
@@ -22,8 +24,7 @@ typedef struct {
 typedef struct {
   proc_sample_t samples[PROC_MAX_TRACKED];
   size_t count;
-  unsigned long long
-      last_total_ticks; /* system-wide CPU ticks at last sample */
+  unsigned long long last_total_ticks; // system-wide CPU ticks at last sample
 } proc_context_t;
 
 /* Initialize process collector context */
