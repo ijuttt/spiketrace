@@ -30,6 +30,7 @@ typedef struct {
 /* Single process entry in snapshot */
 typedef struct {
   int32_t pid;
+  char comm[16];
   double cpu_usage_pct;
   uint64_t rss_kib;
 } spkt_proc_entry_t;
