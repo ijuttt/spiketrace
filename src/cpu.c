@@ -90,7 +90,7 @@ spkt_status_t cpu_read_jiffies(struct cpu_jiffies *jiffies, int max_cores) {
 /* Sum all jiffies
  * Excluding 'guest' & 'guest_nice' to avoid double-counting
  */
-static inline unsigned long long total_jiffies(const struct cpu_jiffies *j) {
+unsigned long long total_jiffies(const struct cpu_jiffies *j) {
   return j->user + j->nice + j->system + j->idle + j->iowait + j->irq +
          j->softirq + j->steal;
 }

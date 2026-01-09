@@ -41,4 +41,7 @@ spkt_status_t cpu_calc_usage_pct_batch(const struct cpu_jiffies *old_jiffies,
                                        const struct cpu_jiffies *new_jiffies,
                                        int num_cores, double *out_usage);
 
+/* Sum all jiffies (excluding guest & guest_nice to avoid double-counting) */
+unsigned long long total_jiffies(const struct cpu_jiffies *j);
+
 #endif
