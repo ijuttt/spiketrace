@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 199309L
+
 #include "ringbuf.h"
 #include "spkt_common.h"
 
