@@ -16,7 +16,6 @@ typedef struct {
   size_t tail;
   size_t count;
   pthread_mutex_t lock;
-  bool overflow_warned;
 } ringbuffer_t;
 
 /* Initialize ring buffer */
