@@ -1,0 +1,18 @@
+[Unit]
+Description=Spiketrace system resource spike capture daemon
+Documentation=https://github.com/ijuttt/spiketrace
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/spiketrace
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spiketrace
+
+[Install]
+WantedBy=multi-user.target
