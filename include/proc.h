@@ -4,18 +4,21 @@
 #include "snapshot.h"
 #include "spkt_common.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /* Maximum processes to track for CPU delta calculation */
-#define PROC_MAX_TRACKED 256
+#define PROC_MAX_TRACKED 512
 
 /* Single process sample for CPU delta calculation */
 typedef struct {
   int32_t pid;
-  unsigned long long ticks; // utime + stime
+  unsigned long long ticks; /* utime + stime */
   uint64_t rss_kib;
-  double cpu_pct; // calculated CPU% (0..100 per core, can exceed 100 on
-                  // multi-core)
+  double cpu_pct;          /* current CPU% (can exceed 100% on multi-core) */
+  double baseline_cpu_pct; /* EMA-smoothed baseline for delta detection */
+  uint8_t sample_count;    /* how many samples seen for this PID */
+  bool is_new;             /* first time seen this PID (this snapshot) */
   char comm[16];
   int valid;
 } proc_sample_t;

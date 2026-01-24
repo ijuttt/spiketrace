@@ -14,6 +14,8 @@
 #define PROC_PATH "/proc"
 #define STAT_BUF_SIZE 512
 #define STATM_BUF_SIZE 128
+#define BASELINE_ALPHA                                                         \
+  0.3 /* EMA smoothing for baseline (higher = more responsive) */
 
 static long page_size_bytes = 0;
 
@@ -126,11 +128,11 @@ static proc_sample_t *find_prev_sample(proc_context_t *ctx, int32_t pid) {
 }
 
 /* Comparison function for qsort - sort by CPU% descending */
-static int compare_samples(const void *a, const void *b) {
+static int compare_samples_by_cpu(const void *a, const void *b) {
   const proc_sample_t *sa = (const proc_sample_t *)a;
   const proc_sample_t *sb = (const proc_sample_t *)b;
 
-  // Invalid entries go to the end
+  /* Invalid entries go to the end */
   if (!sa->valid && !sb->valid)
     return 0;
   if (!sa->valid)
@@ -138,16 +140,44 @@ static int compare_samples(const void *a, const void *b) {
   if (!sb->valid)
     return -1;
 
-  // Sort by cpu_pct descending
+  /* Sort by cpu_pct descending */
   if (sb->cpu_pct > sa->cpu_pct)
     return 1;
   if (sb->cpu_pct < sa->cpu_pct)
     return -1;
 
-  // Tiebreaker: RSS descending
+  /* Tiebreaker: RSS descending */
   if (sb->rss_kib > sa->rss_kib)
     return 1;
   if (sb->rss_kib < sa->rss_kib)
+    return -1;
+
+  return 0;
+}
+
+/* Comparison function for qsort - sort by RSS descending */
+static int compare_samples_by_rss(const void *a, const void *b) {
+  const proc_sample_t *sa = (const proc_sample_t *)a;
+  const proc_sample_t *sb = (const proc_sample_t *)b;
+
+  /* Invalid entries go to the end */
+  if (!sa->valid && !sb->valid)
+    return 0;
+  if (!sa->valid)
+    return 1;
+  if (!sb->valid)
+    return -1;
+
+  /* Sort by rss_kib descending */
+  if (sb->rss_kib > sa->rss_kib)
+    return 1;
+  if (sb->rss_kib < sa->rss_kib)
+    return -1;
+
+  /* Tiebreaker: CPU descending */
+  if (sb->cpu_pct > sa->cpu_pct)
+    return 1;
+  if (sb->cpu_pct < sa->cpu_pct)
     return -1;
 
   return 0;
@@ -215,8 +245,11 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
     sample.pid = pid;
     sample.valid = 1;
     sample.cpu_pct = 0.0;
+    sample.baseline_cpu_pct = 0.0;
+    sample.sample_count = 0;
+    sample.is_new = true; /* Assume new until we find prev */
 
-    // Read process stats
+    /* Read process stats */
     if (parse_proc_stat(pid, &sample.ticks, sample.comm, sizeof(sample.comm)) !=
         0) {
       continue;
@@ -226,14 +259,29 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
       continue;
     }
 
-    // Calculate CPU% directly in sample (fixes broken parallel array mapping)
+    /* Calculate CPU% and track baseline */
+    proc_sample_t *prev = find_prev_sample(ctx, sample.pid);
+
     if (!is_first_call && tick_delta > 0) {
-      proc_sample_t *prev = find_prev_sample(ctx, sample.pid);
       if (prev && sample.ticks >= prev->ticks) {
         unsigned long long proc_delta = sample.ticks - prev->ticks;
-        // Note: can exceed 100% on multi-core systems
         sample.cpu_pct = 100.0 * (double)proc_delta / (double)tick_delta;
       }
+    }
+
+    if (prev) {
+      /* Existing process - inherit and update baseline */
+      sample.is_new = false;
+      sample.sample_count =
+          (prev->sample_count < 255) ? prev->sample_count + 1 : 255;
+      /* EMA: baseline = alpha * current + (1 - alpha) * prev_baseline */
+      sample.baseline_cpu_pct = BASELINE_ALPHA * sample.cpu_pct +
+                                (1.0 - BASELINE_ALPHA) * prev->baseline_cpu_pct;
+    } else {
+      /* New process - establish initial baseline */
+      sample.is_new = true;
+      sample.sample_count = 1;
+      sample.baseline_cpu_pct = sample.cpu_pct;
     }
 
     curr_samples[curr_count++] = sample;
@@ -246,10 +294,9 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
     return SPKT_OK;
   }
 
-  // Sort by cpu_pct (now stored directly in sample, not abusing ticks field)
-  qsort(curr_samples, curr_count, sizeof(proc_sample_t), compare_samples);
+  /* Sort by CPU and copy top processes */
+  qsort(curr_samples, curr_count, sizeof(proc_sample_t), compare_samples_by_cpu);
 
-  // Copy top processes to output
   size_t copy_count = (curr_count < MAX_PROCS) ? curr_count : MAX_PROCS;
   for (size_t i = 0; i < copy_count; i++) {
     out->entries[i].pid = curr_samples[i].pid;
@@ -261,7 +308,20 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
   }
   out->valid_entry_count = (uint32_t)copy_count;
 
-  // Update context for next call (clear old samples first)
+  /* Re-sort by RSS and copy top memory consumers */
+  qsort(curr_samples, curr_count, sizeof(proc_sample_t), compare_samples_by_rss);
+
+  for (size_t i = 0; i < copy_count; i++) {
+    out->top_rss_entries[i].pid = curr_samples[i].pid;
+    strncpy(out->top_rss_entries[i].comm, curr_samples[i].comm,
+            sizeof(out->top_rss_entries[i].comm) - 1);
+    out->top_rss_entries[i].comm[sizeof(out->top_rss_entries[i].comm) - 1] = '\0';
+    out->top_rss_entries[i].cpu_usage_pct = curr_samples[i].cpu_pct;
+    out->top_rss_entries[i].rss_kib = curr_samples[i].rss_kib;
+  }
+  out->valid_rss_count = (uint32_t)copy_count;
+
+  /* Update context for next call */
   memset(ctx->samples, 0, sizeof(ctx->samples));
   memcpy(ctx->samples, curr_samples, curr_count * sizeof(proc_sample_t));
   ctx->count = curr_count;

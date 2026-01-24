@@ -37,8 +37,13 @@ typedef struct {
 
 /* Top processes snapshot data */
 typedef struct {
+  /* Top processes by CPU usage */
   spkt_proc_entry_t entries[MAX_PROCS];
   uint32_t valid_entry_count;
+
+  /* Top processes by RSS (memory) - for memory spike attribution */
+  spkt_proc_entry_t top_rss_entries[MAX_PROCS];
+  uint32_t valid_rss_count;
 } spkt_proc_snapshot_t;
 
 /* Complete system snapshot at a point in time */
