@@ -30,4 +30,9 @@ spkt_status_t snapshot_builder_collect(snapshot_builder_t *builder,
 /* Cleanup internal state (future-proof) */
 spkt_status_t snapshot_builder_cleanup(snapshot_builder_t *builder);
 
+/* Get proc samples for anomaly detection (read-only access) */
+const proc_sample_t *
+snapshot_builder_get_proc_samples(const snapshot_builder_t *builder,
+                                  size_t *out_count);
+
 #endif

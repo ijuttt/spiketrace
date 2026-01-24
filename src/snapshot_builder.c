@@ -102,3 +102,17 @@ spkt_status_t snapshot_builder_cleanup(snapshot_builder_t *builder) {
 
   return SPKT_OK;
 }
+
+const proc_sample_t *
+snapshot_builder_get_proc_samples(const snapshot_builder_t *builder,
+                                  size_t *out_count) {
+  if (!builder || !out_count) {
+    if (out_count) {
+      *out_count = 0;
+    }
+    return NULL;
+  }
+
+  *out_count = builder->proc_ctx.count;
+  return builder->proc_ctx.samples;
+}
