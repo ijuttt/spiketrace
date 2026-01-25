@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 /* Maximum config file size (64 KiB) */
 #define CONFIG_MAX_FILE_SIZE (64 * 1024)

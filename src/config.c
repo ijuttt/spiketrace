@@ -110,9 +110,7 @@ static bool is_alpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
-static bool is_alnum(char c) {
-  return is_alpha(c) || is_digit(c);
-}
+
 
 static void skip_whitespace(toml_parser_t *p) {
   while (p->pos < p->len && is_whitespace(p->data[p->pos])) {
