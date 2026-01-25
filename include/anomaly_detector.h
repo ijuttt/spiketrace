@@ -56,6 +56,9 @@ typedef struct {
 
   /* Cooldown */
   uint64_t cooldown_ns;
+
+  /* Baseline smoothing (lower = more stable) */
+  double memory_baseline_alpha;
 } anomaly_config_t;
 
 /* Result of anomaly evaluation */

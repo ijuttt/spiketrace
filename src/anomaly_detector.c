@@ -84,6 +84,7 @@ anomaly_config_t anomaly_default_config(void) {
       .mem_pressure_threshold_pct = ANOMALY_DEFAULT_MEM_PRESSURE_THRESHOLD_PCT,
       .swap_spike_threshold_kib = ANOMALY_DEFAULT_SWAP_SPIKE_THRESHOLD_MIB * 1024,
       .cooldown_ns = ANOMALY_DEFAULT_COOLDOWN_NS,
+      .memory_baseline_alpha = ANOMALY_MEM_BASELINE_ALPHA,
   };
 }
 
@@ -175,8 +176,8 @@ static void evaluate_mem(const anomaly_config_t *config,
     if (elapsed < config->cooldown_ns) {
       /* Still in cooldown - just update baseline */
       state->mem_baseline_kib = (uint64_t)(
-          ANOMALY_MEM_BASELINE_ALPHA * (double)available +
-          (1.0 - ANOMALY_MEM_BASELINE_ALPHA) * (double)baseline);
+          config->memory_baseline_alpha * (double)available +
+          (1.0 - config->memory_baseline_alpha) * (double)baseline);
       return;
     }
   }
@@ -222,8 +223,8 @@ static void evaluate_mem(const anomaly_config_t *config,
 
   /* Update baseline */
   state->mem_baseline_kib = (uint64_t)(
-      ANOMALY_MEM_BASELINE_ALPHA * (double)available +
-      (1.0 - ANOMALY_MEM_BASELINE_ALPHA) * (double)baseline);
+      config->memory_baseline_alpha * (double)available +
+      (1.0 - config->memory_baseline_alpha) * (double)baseline);
 }
 
 /* Evaluate swap anomalies */
@@ -254,8 +255,8 @@ static void evaluate_swap(const anomaly_config_t *config,
     uint64_t elapsed = current_ns - state->last_swap_trigger_ns;
     if (elapsed < config->cooldown_ns) {
       state->swap_baseline_kib = (uint64_t)(
-          ANOMALY_MEM_BASELINE_ALPHA * (double)swap_used +
-          (1.0 - ANOMALY_MEM_BASELINE_ALPHA) * (double)baseline);
+          config->memory_baseline_alpha * (double)swap_used +
+          (1.0 - config->memory_baseline_alpha) * (double)baseline);
       return;
     }
   }
@@ -295,8 +296,8 @@ static void evaluate_swap(const anomaly_config_t *config,
 
   /* Update baseline */
   state->swap_baseline_kib = (uint64_t)(
-      ANOMALY_MEM_BASELINE_ALPHA * (double)swap_used +
-      (1.0 - ANOMALY_MEM_BASELINE_ALPHA) * (double)baseline);
+      config->memory_baseline_alpha * (double)swap_used +
+      (1.0 - config->memory_baseline_alpha) * (double)baseline);
 }
 
 anomaly_result_t anomaly_evaluate(const anomaly_config_t *config,

@@ -35,4 +35,12 @@ const proc_sample_t *
 snapshot_builder_get_proc_samples(const snapshot_builder_t *builder,
                                   size_t *out_count);
 
+/* Set process baseline alpha (EMA smoothing factor) */
+void snapshot_builder_set_baseline_alpha(snapshot_builder_t *builder,
+                                         double alpha);
+
+/* Set top processes limit (maximum processes stored per snapshot) */
+void snapshot_builder_set_top_processes_limit(snapshot_builder_t *builder,
+                                             uint32_t limit);
+
 #endif

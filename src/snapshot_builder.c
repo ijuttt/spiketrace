@@ -116,3 +116,25 @@ snapshot_builder_get_proc_samples(const snapshot_builder_t *builder,
   *out_count = builder->proc_ctx.count;
   return builder->proc_ctx.samples;
 }
+
+void snapshot_builder_set_baseline_alpha(snapshot_builder_t *builder,
+                                        double alpha) {
+  if (!builder) {
+    return;
+  }
+  builder->proc_ctx.baseline_alpha = alpha;
+}
+
+void snapshot_builder_set_top_processes_limit(snapshot_builder_t *builder,
+                                              uint32_t limit) {
+  if (!builder) {
+    return;
+  }
+  if (limit > MAX_PROCS) {
+    limit = MAX_PROCS; /* Clamp to array size */
+  }
+  if (limit == 0) {
+    limit = 1; /* Minimum 1 */
+  }
+  builder->proc_ctx.top_processes_limit = limit;
+}

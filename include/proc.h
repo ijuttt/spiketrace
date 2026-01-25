@@ -28,6 +28,8 @@ typedef struct {
   proc_sample_t samples[PROC_MAX_TRACKED];
   size_t count;
   unsigned long long last_total_ticks; // system-wide CPU ticks at last sample
+  double baseline_alpha; // EMA smoothing factor for CPU baseline (0.0-1.0)
+  uint32_t top_processes_limit; // Maximum processes to store in snapshot (1-MAX_PROCS)
 } proc_context_t;
 
 /* Initialize process collector context */
