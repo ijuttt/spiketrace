@@ -6,6 +6,7 @@ LDFLAGS = -lpthread
 # Daemon sources
 DAEMON_SRC = \
 	src/anomaly_detector.c \
+	src/config.c \
 	src/cpu.c \
 	src/json_writer.c \
 	src/mem.c \
