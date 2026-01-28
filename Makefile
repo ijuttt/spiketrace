@@ -26,9 +26,11 @@ VIEWER_OUT = build/spiketrace-view
 all: $(DAEMON_OUT) $(VIEWER_OUT)
 
 $(DAEMON_OUT): $(DAEMON_SRC)
+	@mkdir -p build
 	$(CC) $(CFLAGS) $(DAEMON_SRC) -o $(DAEMON_OUT) $(LDFLAGS)
 
 $(VIEWER_OUT): $(VIEWER_SRC)
+	@mkdir -p build
 	$(CC) $(CFLAGS) $(VIEWER_SRC) -o $(VIEWER_OUT)
 
 run: $(DAEMON_OUT)
