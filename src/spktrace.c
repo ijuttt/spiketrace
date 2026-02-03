@@ -106,7 +106,28 @@ static anomaly_config_t config_to_anomaly_config(const spkt_config_t *config) {
   anomaly_config.cooldown_ns =
       (uint64_t)(config->cooldown_seconds * 1000000000.0);
   anomaly_config.memory_baseline_alpha = config->memory_baseline_alpha;
+  anomaly_config.trigger_scope = config->trigger_scope;
   return anomaly_config;
+}
+
+/* Format scope context string for logging (empty for per_process) */
+static void format_scope_context(char *buf, size_t buf_size,
+                                 spkt_trigger_scope_t scope, int32_t scope_key) {
+  switch (scope) {
+  case TRIGGER_SCOPE_PROCESS_GROUP:
+    snprintf(buf, buf_size, " (Group %d)", scope_key);
+    break;
+  case TRIGGER_SCOPE_PARENT:
+    snprintf(buf, buf_size, " (Parent %d)", scope_key);
+    break;
+  case TRIGGER_SCOPE_SYSTEM:
+    snprintf(buf, buf_size, " (System)");
+    break;
+  case TRIGGER_SCOPE_PROCESS:
+  default:
+    buf[0] = '\0';
+    break;
+  }
 }
 
 int main(void) {
@@ -265,42 +286,47 @@ int main(void) {
     }
 
     if (anomaly_should_dump(&result)) {
+      /* Format scope context for logging */
+      char scope_ctx[32] = "";
+      format_scope_context(scope_ctx, sizeof(scope_ctx),
+                           result.trigger_scope, result.scope_key);
+
       /* Log anomaly type */
       switch (result.type) {
       case ANOMALY_TYPE_CPU_DELTA:
         fprintf(stderr,
-                "spiketrace: [ANOMALY] CPU DELTA: [%d] %s  "
+                "spiketrace: [ANOMALY] CPU DELTA%s: [%d] %s  "
                 "CPU: %.1f%% (baseline: %.1f%%, delta: +%.1f%%)\n",
-                result.spike_pid, result.spike_comm, result.spike_cpu_pct,
+                scope_ctx, result.spike_pid, result.spike_comm, result.spike_cpu_pct,
                 result.spike_baseline_pct, result.spike_delta);
         break;
       case ANOMALY_TYPE_CPU_NEW_PROC:
         fprintf(stderr,
-                "spiketrace: [ANOMALY] NEW PROCESS: [%d] %s  CPU: %.1f%%\n",
-                result.spike_pid, result.spike_comm, result.spike_cpu_pct);
+                "spiketrace: [ANOMALY] NEW PROCESS%s: [%d] %s  CPU: %.1f%%\n",
+                scope_ctx, result.spike_pid, result.spike_comm, result.spike_cpu_pct);
         break;
       case ANOMALY_TYPE_MEM_DROP:
         fprintf(stderr,
-                "spiketrace: [ANOMALY] MEM DROP by [%d] %s: available: %lu MiB "
+                "spiketrace: [ANOMALY] MEM DROP%s by [%d] %s: available: %lu MiB "
                 "(baseline: %lu MiB, delta: %ld MiB)\n",
-                result.spike_pid, result.spike_comm,
+                scope_ctx, result.spike_pid, result.spike_comm,
                 (unsigned long)(result.mem_available_kib / 1024),
                 (unsigned long)(result.mem_baseline_kib / 1024),
                 (long)(result.mem_delta_kib / 1024));
         break;
       case ANOMALY_TYPE_MEM_PRESSURE:
         fprintf(stderr,
-                "spiketrace: [ANOMALY] MEM PRESSURE: [%d] %s top RSS, %.1f%% "
+                "spiketrace: [ANOMALY] MEM PRESSURE%s: [%d] %s top RSS, %.1f%% "
                 "used (available: %lu MiB)\n",
-                result.spike_pid, result.spike_comm,
+                scope_ctx, result.spike_pid, result.spike_comm,
                 result.mem_used_pct,
                 (unsigned long)(result.mem_available_kib / 1024));
         break;
       case ANOMALY_TYPE_SWAP_SPIKE:
         fprintf(stderr,
-                "spiketrace: [ANOMALY] SWAP SPIKE by [%d] %s: used: %lu MiB "
+                "spiketrace: [ANOMALY] SWAP SPIKE%s by [%d] %s: used: %lu MiB "
                 "(baseline: %lu MiB, delta: +%ld MiB)\n",
-                result.spike_pid, result.spike_comm,
+                scope_ctx, result.spike_pid, result.spike_comm,
                 (unsigned long)(result.swap_used_kib / 1024),
                 (unsigned long)(result.swap_baseline_kib / 1024),
                 (long)(result.swap_delta_kib / 1024));

@@ -530,6 +530,18 @@ static void apply_config_value(spkt_config_t *config, const char *section,
                p->token == TOML_TOK_FLOAT) {
       config->process_baseline_alpha = p->float_val;
     }
+  } else if (strcmp(section, "trigger") == 0) {
+    if (strcmp(key, "scope") == 0 && p->token == TOML_TOK_STRING) {
+      if (strcmp(p->str_buf, "per_process") == 0) {
+        config->trigger_scope = TRIGGER_SCOPE_PROCESS;
+      } else if (strcmp(p->str_buf, "process_group") == 0) {
+        config->trigger_scope = TRIGGER_SCOPE_PROCESS_GROUP;
+      } else if (strcmp(p->str_buf, "parent") == 0) {
+        config->trigger_scope = TRIGGER_SCOPE_PARENT;
+      } else if (strcmp(p->str_buf, "system") == 0) {
+        config->trigger_scope = TRIGGER_SCOPE_SYSTEM;
+      }
+    }
   }
 }
 
@@ -585,6 +597,8 @@ void config_init_defaults(spkt_config_t *config) {
 
   config->memory_baseline_alpha = DEFAULT_MEMORY_BASELINE_ALPHA;
   config->process_baseline_alpha = DEFAULT_PROCESS_BASELINE_ALPHA;
+
+  config->trigger_scope = TRIGGER_SCOPE_PROCESS;
 
   config->loaded = false;
 }

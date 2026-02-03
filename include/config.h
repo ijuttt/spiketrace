@@ -19,6 +19,14 @@
 /* Config file version */
 #define CONFIG_VERSION 1
 
+/* Trigger scope for grouping anomaly cooldowns */
+typedef enum {
+  TRIGGER_SCOPE_PROCESS = 0,
+  TRIGGER_SCOPE_PROCESS_GROUP,
+  TRIGGER_SCOPE_PARENT,
+  TRIGGER_SCOPE_SYSTEM,
+} spkt_trigger_scope_t;
+
 /* Configuration structure holding all user-configurable values */
 typedef struct {
   /* Anomaly detection thresholds */
@@ -49,6 +57,9 @@ typedef struct {
   /* Advanced tuning */
   double memory_baseline_alpha;
   double process_baseline_alpha;
+
+  /* Trigger policy */
+  spkt_trigger_scope_t trigger_scope;
 
   /* Internal: config loaded flag */
   bool loaded;

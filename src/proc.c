@@ -40,8 +40,9 @@ static unsigned long long read_total_system_ticks(void) {
   return total_jiffies(&jiffies[0]);
 }
 
-/* Parse utime+stime and comm from /proc/[pid]/stat */
+/* Parse utime+stime, ppid, pgid, and comm from /proc/[pid]/stat */
 static int parse_proc_stat(int pid, unsigned long long *out_ticks,
+                           int32_t *out_ppid, int32_t *out_pgid,
                            char *out_comm, size_t comm_size) {
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/stat", pid);
@@ -74,26 +75,29 @@ static int parse_proc_stat(int pid, unsigned long long *out_ticks,
   strncpy(out_comm, comm_start + 1, comm_len);
   out_comm[comm_len] = '\0';
 
-  // Parse fields after comm: state is field 3, utime is 14, stime is 15
-  // Fields are space-separated after the closing paren
+  // Parse fields after comm: state is field 3, ppid is 4, pgrp is 5
+  // utime is 14, stime is 15
   char *fields_start = comm_end + 2; // skip ") "
 
   unsigned long utime = 0, stime = 0;
+  int ppid_raw = 0, pgid_raw = 0;
 
-  /* utime/stime follow comm and state fields */
   int scanned = sscanf(
       fields_start,
-      "%*c "                 // 3: state
-      "%*d %*d %*d %*d %*d " // 4-8: ppid, pgrp, session, tty, tpgid
+      "%*c "             // 3: state
+      "%d %d "           // 4-5: ppid, pgrp
+      "%*d %*d %*d "     // 6-8: session, tty, tpgid
       "%*u %*u %*u %*u %*u " // 9-13: flags, minflt, cminflt, majflt, cmajflt
-      "%lu %lu",             // 14-15: utime, stime
-      &utime, &stime);
+      "%lu %lu",         // 14-15: utime, stime
+      &ppid_raw, &pgid_raw, &utime, &stime);
 
-  if (scanned != 2) {
+  if (scanned != 4) {
     return -1;
   }
 
   *out_ticks = (unsigned long long)(utime + stime);
+  *out_ppid = ppid_raw;
+  *out_pgid = pgid_raw;
   return 0;
 }
 
@@ -254,8 +258,8 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
     sample.is_new = true; /* Assume new until we find prev */
 
     /* Read process stats */
-    if (parse_proc_stat(pid, &sample.ticks, sample.comm, sizeof(sample.comm)) !=
-        0) {
+    if (parse_proc_stat(pid, &sample.ticks, &sample.ppid, &sample.pgid,
+                        sample.comm, sizeof(sample.comm)) != 0) {
       continue;
     }
 

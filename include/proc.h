@@ -16,6 +16,8 @@
 /* Single process sample for CPU delta calculation */
 typedef struct {
   int32_t pid;
+  int32_t ppid;
+  int32_t pgid;
   unsigned long long ticks; /* utime + stime */
   uint64_t rss_kib;
   double cpu_pct;          /* current CPU% (can exceed 100% on multi-core) */

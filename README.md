@@ -142,6 +142,11 @@ Below is a complete reference of every configuration key available in `config.to
 | `swap_spike_threshold_mib`   | `256`   | Trigger if swap usage increases by this amount (in MiB).                                 |
 | `cooldown_seconds`           | `5.0`   | Minimum time to wait before triggering again for the same anomaly/process.               |
 
+#### Trigger Policy (New)
+| Key     | Default       | Options                                               | Description |
+|---------|---------------|-------------------------------------------------------|-------------|
+| `scope` | `per_process` | `per_process`, `process_group`, `parent`, `system`    | Defines how triggers are grouped. `per_process` = default (PID-based). `process_group` = shared cooldown for all processes in PGID. `parent` = shared cooldown for children of same PPID. `system` = one global trigger cooldown. |
+
 #### Sampling Engine
 | Key                          | Default | Description                                                                  |
 |------------------------------|---------|------------------------------------------------------------------------------|

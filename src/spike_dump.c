@@ -541,6 +541,61 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
 
+  /* Trigger policy context (schema v4) */
+  s = spkt_json_key(w, "policy");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_begin_object(w);
+  if (s != SPKT_OK)
+    return s;
+
+  const char *scope_str;
+  const char *scope_desc;
+  switch (anomaly->trigger_scope) {
+  case TRIGGER_SCOPE_PROCESS_GROUP:
+    scope_str = "process_group";
+    scope_desc = "Grouped by PGID";
+    break;
+  case TRIGGER_SCOPE_PARENT:
+    scope_str = "parent";
+    scope_desc = "Grouped by PPID";
+    break;
+  case TRIGGER_SCOPE_SYSTEM:
+    scope_str = "system";
+    scope_desc = "System-wide grouping";
+    break;
+  case TRIGGER_SCOPE_PROCESS:
+  default:
+    scope_str = "per_process";
+    scope_desc = "Per-process (no grouping)";
+    break;
+  }
+
+  s = spkt_json_key(w, "scope");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_string(w, scope_str);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "scope_key");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_int(w, anomaly->scope_key);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "description");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_string(w, scope_desc);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_end_object(w); /* end policy */
+  if (s != SPKT_OK)
+    return s;
+
   s = spkt_json_end_object(w);
   return s;
 }

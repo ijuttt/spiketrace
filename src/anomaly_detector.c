@@ -9,18 +9,34 @@
 
 /* ===== INTERNAL: COOLDOWN TABLE ===== */
 
-static cooldown_entry_t *cooldown_find(anomaly_state_t *state, int32_t pid) {
+static int32_t compute_scope_key(const proc_sample_t *sample,
+                                 spkt_trigger_scope_t scope) {
+  switch (scope) {
+    case TRIGGER_SCOPE_PROCESS_GROUP:
+      return sample->pgid;
+    case TRIGGER_SCOPE_PARENT:
+      return sample->ppid;
+    case TRIGGER_SCOPE_SYSTEM:
+      return 0;
+    case TRIGGER_SCOPE_PROCESS:
+    default:
+      return sample->pid;
+  }
+}
+
+static cooldown_entry_t *cooldown_find(anomaly_state_t *state,
+                                       int32_t scope_key) {
   for (size_t i = 0; i < state->cooldown_count; i++) {
-    if (state->cooldowns[i].pid == pid) {
+    if (state->cooldowns[i].scope_key == scope_key) {
       return &state->cooldowns[i];
     }
   }
   return NULL;
 }
 
-static bool cooldown_is_active(anomaly_state_t *state, int32_t pid,
+static bool cooldown_is_active(anomaly_state_t *state, int32_t scope_key,
                                uint64_t current_ns, uint64_t cooldown_ns) {
-  cooldown_entry_t *entry = cooldown_find(state, pid);
+  cooldown_entry_t *entry = cooldown_find(state, scope_key);
   if (!entry) {
     return false;
   }
@@ -42,9 +58,9 @@ static bool cooldown_is_active(anomaly_state_t *state, int32_t pid,
   return false;
 }
 
-static void cooldown_record(anomaly_state_t *state, int32_t pid,
+static void cooldown_record(anomaly_state_t *state, int32_t scope_key,
                             uint64_t timestamp_ns) {
-  cooldown_entry_t *entry = cooldown_find(state, pid);
+  cooldown_entry_t *entry = cooldown_find(state, scope_key);
   if (entry) {
     entry->last_trigger_ns = timestamp_ns;
     return;
@@ -60,12 +76,12 @@ static void cooldown_record(anomaly_state_t *state, int32_t pid,
         oldest_idx = i;
       }
     }
-    state->cooldowns[oldest_idx].pid = pid;
+    state->cooldowns[oldest_idx].scope_key = scope_key;
     state->cooldowns[oldest_idx].last_trigger_ns = timestamp_ns;
     return;
   }
 
-  state->cooldowns[state->cooldown_count].pid = pid;
+  state->cooldowns[state->cooldown_count].scope_key = scope_key;
   state->cooldowns[state->cooldown_count].last_trigger_ns = timestamp_ns;
   state->cooldown_count++;
 }
@@ -91,7 +107,7 @@ anomaly_config_t anomaly_default_config(void) {
   };
 }
 
-/* Evaluate CPU anomalies (per-process) */
+/* Evaluate CPU anomalies */
 static void evaluate_cpu(const anomaly_config_t *config,
                          anomaly_state_t *state,
                          const proc_sample_t *samples,
@@ -108,7 +124,8 @@ static void evaluate_cpu(const anomaly_config_t *config,
       continue;
     }
 
-    if (cooldown_is_active(state, s->pid, current_ns, config->cooldown_ns)) {
+    int32_t scope_key = compute_scope_key(s, config->trigger_scope);
+    if (cooldown_is_active(state, scope_key, current_ns, config->cooldown_ns)) {
       continue;
     }
 
@@ -144,7 +161,10 @@ static void evaluate_cpu(const anomaly_config_t *config,
     out->spike_delta = worst->cpu_pct - worst->baseline_cpu_pct;
     out->is_new_process_spike = is_new;
 
-    cooldown_record(state, worst->pid, current_ns);
+    int32_t worst_scope_key = compute_scope_key(worst, config->trigger_scope);
+    out->trigger_scope = config->trigger_scope;
+    out->scope_key = worst_scope_key;
+    cooldown_record(state, worst_scope_key, current_ns);
   }
 }
 
@@ -218,6 +238,8 @@ static void evaluate_mem(const anomaly_config_t *config,
         out->spike_pid = top_rss->pid;
         strncpy(out->spike_comm, top_rss->comm, sizeof(out->spike_comm) - 1);
         out->spike_comm[sizeof(out->spike_comm) - 1] = '\0';
+        out->trigger_scope = config->trigger_scope;
+        out->scope_key = compute_scope_key(top_rss, config->trigger_scope);
       }
     }
 
@@ -291,6 +313,8 @@ static void evaluate_swap(const anomaly_config_t *config,
         out->spike_pid = top_rss->pid;
         strncpy(out->spike_comm, top_rss->comm, sizeof(out->spike_comm) - 1);
         out->spike_comm[sizeof(out->spike_comm) - 1] = '\0';
+        out->trigger_scope = config->trigger_scope;
+        out->scope_key = compute_scope_key(top_rss, config->trigger_scope);
       }
     }
 

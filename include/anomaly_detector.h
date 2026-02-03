@@ -4,6 +4,7 @@
 #ifndef ANOMALY_DETECTOR_H
 #define ANOMALY_DETECTOR_H
 
+#include "config.h"
 #include "proc.h"
 #include "snapshot.h"
 
@@ -62,6 +63,9 @@ typedef struct {
 
   /* Baseline smoothing (lower = more stable) */
   double memory_baseline_alpha;
+
+  /* Trigger scope for cooldown grouping */
+  spkt_trigger_scope_t trigger_scope;
 } anomaly_config_t;
 
 /* Result of anomaly evaluation */
@@ -87,17 +91,21 @@ typedef struct {
   uint64_t swap_used_kib;
   uint64_t swap_baseline_kib;
   int64_t swap_delta_kib;
+
+  /* Trigger policy context (for observability) */
+  spkt_trigger_scope_t trigger_scope;
+  int32_t scope_key;
 } anomaly_result_t;
 
-/* Single entry in per-PID cooldown table */
+/* Single entry in cooldown table (keyed by scope) */
 typedef struct {
-  int32_t pid;
+  int32_t scope_key;
   uint64_t last_trigger_ns;
 } cooldown_entry_t;
 
 /* Detector state */
 typedef struct {
-  /* Per-PID cooldown tracking */
+  /* Cooldown tracking (keyed by scope) */
   cooldown_entry_t cooldowns[ANOMALY_COOLDOWN_TABLE_SIZE];
   size_t cooldown_count;
 
