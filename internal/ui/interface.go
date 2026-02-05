@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 // Package ui defines the UI interface for the spiketrace viewer.
 package ui
 

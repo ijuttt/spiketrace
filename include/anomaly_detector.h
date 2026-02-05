@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 #ifndef ANOMALY_DETECTOR_H
 #define ANOMALY_DETECTOR_H
 

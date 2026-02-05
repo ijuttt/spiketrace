@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 #ifndef SNAPSHOT_H
 #define SNAPSHOT_H
 

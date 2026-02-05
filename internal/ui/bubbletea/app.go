@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 // Package bubbletea provides the main TUI application using Bubble Tea.
 package bubbletea
 

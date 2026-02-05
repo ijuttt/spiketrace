@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 // Package processor provides async file loading and parsing for the TUI.
 package processor
 

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 // Package analysis provides viewer-side computation for spike dump data.
 // This layer sits between the raw model types and presentation, computing
 // derived metrics, time-series data, and cross-snapshot analysis.

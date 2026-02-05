@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 ijuttt */
+
 #include "mem.h"
 #include "spkt_common.h"
 #include <stdio.h>

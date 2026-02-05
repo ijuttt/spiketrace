@@ -190,3 +190,7 @@ spiketrace runs as root to read system-wide `/proc` data.
 - No data leaves the system
 
 Root access is required to read kernel virtual memory at `/proc` across all processes.
+
+## License
+
+This project is licensed under the GPL-2.0 License - see the [LICENSE](LICENSE) file for details.
