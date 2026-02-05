@@ -521,6 +521,9 @@ static void apply_config_value(spkt_config_t *config, const char *section,
     } else if (strcmp(key, "enable_swap_detection") == 0 &&
                p->token == TOML_TOK_BOOLEAN) {
       config->enable_swap_detection = p->bool_val;
+    } else if (strcmp(key, "aggregate_related_processes") == 0 &&
+               p->token == TOML_TOK_BOOLEAN) {
+      config->aggregate_related_processes = p->bool_val;
     }
   } else if (strcmp(section, "advanced") == 0) {
     if (strcmp(key, "memory_baseline_alpha") == 0 &&
@@ -594,6 +597,7 @@ void config_init_defaults(spkt_config_t *config) {
   config->enable_cpu_detection = true;
   config->enable_memory_detection = true;
   config->enable_swap_detection = true;
+  config->aggregate_related_processes = false;
 
   config->memory_baseline_alpha = DEFAULT_MEMORY_BASELINE_ALPHA;
   config->process_baseline_alpha = DEFAULT_PROCESS_BASELINE_ALPHA;
@@ -653,23 +657,34 @@ spkt_status_t config_load(spkt_config_t *config, const char *config_path) {
 
   /* Determine config file path */
   char file_path[CONFIG_MAX_PATH_LEN];
+  bool found = false;
+
   if (config_path) {
+    /* Explicit path provided */
     if (strlen(config_path) >= sizeof(file_path)) {
       fprintf(stderr, "config: config path too long\n");
       return SPKT_OK; /* Use defaults */
     }
     strncpy(file_path, config_path, sizeof(file_path) - 1);
     file_path[sizeof(file_path) - 1] = '\0';
+    found = config_file_exists(file_path);
   } else {
-    spkt_status_t s = config_get_default_path(file_path, sizeof(file_path));
-    if (s != SPKT_OK) {
-      /* No home directory - use defaults silently */
-      return SPKT_OK;
+    /* Check system-wide config first (for daemon/root execution) */
+    if (config_file_exists(CONFIG_SYSTEM_PATH)) {
+      strncpy(file_path, CONFIG_SYSTEM_PATH, sizeof(file_path) - 1);
+      file_path[sizeof(file_path) - 1] = '\0';
+      found = true;
+    } else {
+      /* Fall back to user config */
+      spkt_status_t s = config_get_default_path(file_path, sizeof(file_path));
+      if (s == SPKT_OK) {
+        found = config_file_exists(file_path);
+      }
     }
   }
 
   /* Check if file exists */
-  if (!config_file_exists(file_path)) {
+  if (!found) {
     /* Missing config is normal - use defaults */
     return SPKT_OK;
   }

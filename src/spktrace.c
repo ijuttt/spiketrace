@@ -107,6 +107,7 @@ static anomaly_config_t config_to_anomaly_config(const spkt_config_t *config) {
       (uint64_t)(config->cooldown_seconds * 1000000000.0);
   anomaly_config.memory_baseline_alpha = config->memory_baseline_alpha;
   anomaly_config.trigger_scope = config->trigger_scope;
+  anomaly_config.aggregate_related_processes = config->aggregate_related_processes;
   return anomaly_config;
 }
 

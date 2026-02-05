@@ -66,6 +66,9 @@ typedef struct {
 
   /* Trigger scope for cooldown grouping */
   spkt_trigger_scope_t trigger_scope;
+
+  /* Group child/helper processes by PGID for new process detection */
+  bool aggregate_related_processes;
 } anomaly_config_t;
 
 /* Result of anomaly evaluation */

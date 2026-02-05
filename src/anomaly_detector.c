@@ -124,14 +124,22 @@ static void evaluate_cpu(const anomaly_config_t *config,
       continue;
     }
 
-    int32_t scope_key = compute_scope_key(s, config->trigger_scope);
-    if (cooldown_is_active(state, scope_key, current_ns, config->cooldown_ns)) {
-      continue;
-    }
-
     /* New process spike */
     if (s->sample_count <= 2 &&
         s->cpu_pct >= config->new_process_threshold_pct) {
+      /*
+       * When aggregation is enabled, use PGID as cooldown key so all
+       * processes in the same group share one cooldown window.
+       */
+      int32_t cooldown_key = config->aggregate_related_processes
+                                 ? s->pgid
+                                 : compute_scope_key(s, config->trigger_scope);
+
+      if (cooldown_is_active(state, cooldown_key, current_ns,
+                             config->cooldown_ns)) {
+        continue;
+      }
+
       if (s->cpu_pct > max_spike) {
         max_spike = s->cpu_pct;
         worst = s;
@@ -139,8 +147,14 @@ static void evaluate_cpu(const anomaly_config_t *config,
       }
     }
 
-    /* Delta spike */
+    /* Delta spike - uses normal trigger_scope */
     if (s->sample_count > 2) {
+      int32_t scope_key = compute_scope_key(s, config->trigger_scope);
+      if (cooldown_is_active(state, scope_key, current_ns,
+                             config->cooldown_ns)) {
+        continue;
+      }
+
       double delta = s->cpu_pct - s->baseline_cpu_pct;
       if (delta >= config->cpu_delta_threshold_pct && delta > max_spike) {
         max_spike = delta;
@@ -161,10 +175,17 @@ static void evaluate_cpu(const anomaly_config_t *config,
     out->spike_delta = worst->cpu_pct - worst->baseline_cpu_pct;
     out->is_new_process_spike = is_new;
 
-    int32_t worst_scope_key = compute_scope_key(worst, config->trigger_scope);
+    /* Record cooldown with appropriate key */
+    int32_t record_key;
+    if (is_new && config->aggregate_related_processes) {
+      record_key = worst->pgid;
+    } else {
+      record_key = compute_scope_key(worst, config->trigger_scope);
+    }
+
     out->trigger_scope = config->trigger_scope;
-    out->scope_key = worst_scope_key;
-    cooldown_record(state, worst_scope_key, current_ns);
+    out->scope_key = record_key;
+    cooldown_record(state, record_key, current_ns);
   }
 }
 

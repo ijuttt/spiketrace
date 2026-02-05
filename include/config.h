@@ -19,6 +19,9 @@
 /* Config file version */
 #define CONFIG_VERSION 1
 
+/* System-wide config path (for daemons running as root) */
+#define CONFIG_SYSTEM_PATH "/etc/spiketrace/config.toml"
+
 /* Trigger scope for grouping anomaly cooldowns */
 typedef enum {
   TRIGGER_SCOPE_PROCESS = 0,
@@ -53,6 +56,7 @@ typedef struct {
   bool enable_cpu_detection;
   bool enable_memory_detection;
   bool enable_swap_detection;
+  bool aggregate_related_processes;
 
   /* Advanced tuning */
   double memory_baseline_alpha;
