@@ -39,6 +39,10 @@ spkt_status_t ringbuf_get_recent(const ringbuffer_t *rb, spkt_snapshot_t *dest,
 /* Get current number of stored snapshots */
 size_t ringbuf_count(const ringbuffer_t *rb);
 
-
+/* Find spike origin by scanning backwards for first snapshot where
+ * process PID exceeded threshold. Returns index offset from newest
+ * (0 = newest, 1 = second newest). Returns -1 if not found. */
+int ringbuf_find_spike_origin(const ringbuffer_t *rb, int32_t pid,
+                              double threshold_pct);
 
 #endif

@@ -597,6 +597,14 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
 
+  /* Origin tracking (schema v4) */
+  s = spkt_json_key(w, "origin_snapshot_index");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_int(w, anomaly->origin_snapshot_idx);
+  if (s != SPKT_OK)
+    return s;
+
   s = spkt_json_end_object(w);
   return s;
 }

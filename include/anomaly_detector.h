@@ -98,6 +98,9 @@ typedef struct {
   /* Trigger policy context (for observability) */
   spkt_trigger_scope_t trigger_scope;
   int32_t scope_key;
+
+  /* Origin tracking: index in dump array where spike started (0 = newest) */
+  int origin_snapshot_idx;
 } anomaly_result_t;
 
 /* Single entry in cooldown table (keyed by scope) */

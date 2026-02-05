@@ -345,6 +345,15 @@ int main(void) {
         }
         ringbuf_get_recent(&rb, dump_snaps, actual_context_size, &dump_count);
 
+        /* Find when spike actually started in ring buffer history */
+        double origin_threshold = (result.type == ANOMALY_TYPE_CPU_NEW_PROC)
+                                      ? anomaly_config.new_process_threshold_pct * 0.5
+                                      : 1.0;
+        int origin_idx = ringbuf_find_spike_origin(&rb, result.spike_pid,
+                                                   origin_threshold);
+        result.origin_snapshot_idx = (origin_idx >= 0 && origin_idx < (int)dump_count)
+                                         ? origin_idx : 0;
+
         if (dump_count > 0) {
           spkt_status_t dump_status =
               spike_dump_write(&dump_ctx, dump_snaps, dump_count, &result,

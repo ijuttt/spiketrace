@@ -108,3 +108,34 @@ size_t ringbuf_count(const ringbuffer_t *rb) {
   return count;
 }
 
+int ringbuf_find_spike_origin(const ringbuffer_t *rb, int32_t pid,
+                              double threshold_pct) {
+  if (!rb || rb->count == 0) {
+    return -1;
+  }
+
+  pthread_mutex_lock((pthread_mutex_t *)&rb->lock);
+
+  int last_found_idx = -1;
+
+  for (size_t i = 0; i < rb->count; i++) {
+    size_t idx = (rb->tail + SPKT_RINGBUF_CAPACITY - i - 1) % SPKT_RINGBUF_CAPACITY;
+    const spkt_snapshot_t *snap = &rb->snapshots[idx];
+
+    for (uint32_t j = 0; j < snap->procs.valid_entry_count; j++) {
+      if (snap->procs.entries[j].pid == pid &&
+          snap->procs.entries[j].cpu_usage_pct >= threshold_pct) {
+        last_found_idx = (int)i;
+        break;
+      }
+    }
+
+    if (last_found_idx != (int)i) {
+      break;
+    }
+  }
+
+  pthread_mutex_unlock((pthread_mutex_t *)&rb->lock);
+  return last_found_idx;
+}
+
