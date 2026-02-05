@@ -8,17 +8,46 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Internal helper to append string to buffer with bounds check */
+/* Maximum buffer size to prevent runaway growth (1MB) */
+#define SPKT_JSON_MAX_BUFFER_SIZE (1024 * 1024)
+
+/* Try to grow buffer to fit additional data */
+static bool json_grow_buffer(spkt_json_writer_t *writer, size_t needed) {
+  if (writer->capacity >= SPKT_JSON_MAX_BUFFER_SIZE) {
+    return false; /* Hit max limit */
+  }
+
+  size_t new_capacity = writer->capacity * 2;
+  if (new_capacity < writer->length + needed + 1) {
+    new_capacity = writer->length + needed + 1;
+  }
+  if (new_capacity > SPKT_JSON_MAX_BUFFER_SIZE) {
+    new_capacity = SPKT_JSON_MAX_BUFFER_SIZE;
+  }
+
+  char *new_buffer = realloc(writer->buffer, new_capacity);
+  if (!new_buffer) {
+    return false;
+  }
+
+  writer->buffer = new_buffer;
+  writer->capacity = new_capacity;
+  return true;
+}
+
+/* Internal helper to append string to buffer with auto-growth */
 static spkt_status_t json_append(spkt_json_writer_t *writer, const char *str,
                                  size_t len) {
   if (writer->error) {
     return SPKT_ERR_JSON_OVERFLOW;
   }
 
-  /* Need space for string + null terminator */
+  /* Try to grow if needed */
   if (writer->length + len >= writer->capacity) {
-    writer->error = true;
-    return SPKT_ERR_JSON_OVERFLOW;
+    if (!json_grow_buffer(writer, len)) {
+      writer->error = true;
+      return SPKT_ERR_JSON_OVERFLOW;
+    }
   }
 
   memcpy(writer->buffer + writer->length, str, len);

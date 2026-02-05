@@ -354,31 +354,42 @@ anomaly_result_t anomaly_evaluate(const anomaly_config_t *config,
                                   size_t proc_sample_count,
                                   const spkt_mem_snapshot_t *mem,
                                   uint64_t current_timestamp_ns) {
-  anomaly_result_t result = {0};
+  anomaly_result_t cpu_result = {0};
+  anomaly_result_t mem_result = {0};
+  anomaly_result_t swap_result = {0};
 
   if (!config || !state) {
-    return result;
+    return cpu_result;
   }
 
-  /* Check CPU first (takes priority) */
+  /* Evaluate ALL anomaly types to ensure baselines are always updated */
   if (proc_samples && proc_sample_count > 0) {
     evaluate_cpu(config, state, proc_samples, proc_sample_count,
-                 current_timestamp_ns, &result);
+                 current_timestamp_ns, &cpu_result);
   }
 
-  /* If no CPU anomaly, check memory */
-  if (!result.has_anomaly && mem) {
+  if (mem) {
     evaluate_mem(config, state, mem, proc_samples, proc_sample_count,
-                 current_timestamp_ns, &result);
+                 current_timestamp_ns, &mem_result);
   }
 
-  /* If no memory anomaly, check swap */
-  if (!result.has_anomaly && mem) {
+  if (mem) {
     evaluate_swap(config, state, mem, proc_samples, proc_sample_count,
-                  current_timestamp_ns, &result);
+                  current_timestamp_ns, &swap_result);
   }
 
-  return result;
+  /* Return highest priority anomaly (CPU > Mem > Swap) */
+  if (cpu_result.has_anomaly) {
+    return cpu_result;
+  }
+  if (mem_result.has_anomaly) {
+    return mem_result;
+  }
+  if (swap_result.has_anomaly) {
+    return swap_result;
+  }
+
+  return cpu_result; /* No anomaly */
 }
 
 

@@ -8,13 +8,14 @@
 #include "time_format.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
-/* File extension for temporary files during atomic write */
-#define TEMP_FILE_SUFFIX ".tmp"
 
 /* Serialize a single process entry to JSON */
 static spkt_status_t serialize_proc_entry(spkt_json_writer_t *w,
@@ -600,67 +601,80 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
   return s;
 }
 
-/* Write buffer to file atomically (write to temp, fsync, rename) */
+/* Secure atomic file write using O_CREAT|O_EXCL to prevent symlink attacks */
 static spkt_status_t write_atomic(const char *final_path, const char *data,
                                   size_t len) {
-  char temp_path[SPIKE_DUMP_PATH_MAX + 8];
-  int written;
-  FILE *fp = NULL;
+  char temp_path[SPIKE_DUMP_PATH_MAX + 16];
+  int fd = -1;
   spkt_status_t result = SPKT_OK;
 
-  written = snprintf(temp_path, sizeof(temp_path), "%s%s", final_path,
-                     TEMP_FILE_SUFFIX);
+  /* Use mkstemp pattern: unique temp name in same directory */
+  int written = snprintf(temp_path, sizeof(temp_path), "%s.XXXXXX", final_path);
   if (written < 0 || (size_t)written >= sizeof(temp_path)) {
     return SPKT_ERR_INVALID_PARAM;
   }
 
-  fp = fopen(temp_path, "w");
-  if (!fp) {
-    fprintf(stderr, "spike_dump: failed to open %s: %s\n", temp_path,
+  /* mkstemp atomically creates file with mode 0600, fails if exists */
+  fd = mkstemp(temp_path);
+  if (fd < 0) {
+    fprintf(stderr, "spike_dump: mkstemp failed for %s: %s\n", temp_path,
             strerror(errno));
     return SPKT_ERR_DUMP_OPEN_FAILED;
   }
 
-  size_t written_bytes = fwrite(data, 1, len, fp);
-  if (written_bytes != len) {
-    fprintf(stderr, "spike_dump: failed to write %s: %s\n", temp_path,
+  /* Set restrictive permissions (readable by owner + group) */
+  if (fchmod(fd, 0640) != 0) {
+    fprintf(stderr, "spike_dump: fchmod failed: %s\n", strerror(errno));
+    /* Non-fatal, continue */
+  }
+
+  /* Write data */
+  const char *ptr = data;
+  size_t remaining = len;
+  while (remaining > 0) {
+    ssize_t n = write(fd, ptr, remaining);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      fprintf(stderr, "spike_dump: write failed for %s: %s\n", temp_path,
+              strerror(errno));
+      result = SPKT_ERR_DUMP_WRITE_FAILED;
+      goto cleanup;
+    }
+    ptr += n;
+    remaining -= (size_t)n;
+  }
+
+  /* Sync to disk */
+  if (fsync(fd) != 0) {
+    fprintf(stderr, "spike_dump: fsync failed for %s: %s\n", temp_path,
             strerror(errno));
     result = SPKT_ERR_DUMP_WRITE_FAILED;
     goto cleanup;
   }
 
-  /* Flush and sync to disk */
-  if (fflush(fp) != 0) {
-    fprintf(stderr, "spike_dump: failed to flush %s: %s\n", temp_path,
+  if (close(fd) != 0) {
+    fprintf(stderr, "spike_dump: close failed for %s: %s\n", temp_path,
             strerror(errno));
+    fd = -1;
     result = SPKT_ERR_DUMP_WRITE_FAILED;
     goto cleanup;
   }
-
-  if (fsync(fileno(fp)) != 0) {
-    fprintf(stderr, "spike_dump: failed to fsync %s: %s\n", temp_path,
-            strerror(errno));
-    result = SPKT_ERR_DUMP_WRITE_FAILED;
-    goto cleanup;
-  }
-
-  fclose(fp);
-  fp = NULL;
+  fd = -1;
 
   /* Atomic rename */
   if (rename(temp_path, final_path) != 0) {
-    fprintf(stderr, "spike_dump: failed to rename %s -> %s: %s\n", temp_path,
+    fprintf(stderr, "spike_dump: rename %s -> %s failed: %s\n", temp_path,
             final_path, strerror(errno));
-    return SPKT_ERR_DUMP_RENAME_FAILED;
+    result = SPKT_ERR_DUMP_RENAME_FAILED;
+    goto cleanup;
   }
 
   return SPKT_OK;
 
 cleanup:
-  if (fp) {
-    fclose(fp);
+  if (fd >= 0) {
+    close(fd);
   }
-  /* Remove temp file on error */
   unlink(temp_path);
   return result;
 }

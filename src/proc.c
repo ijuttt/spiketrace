@@ -215,31 +215,35 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
 
   memset(out, 0, sizeof(*out));
 
-  // Get current total system ticks
+  /* Get current total system ticks */
   unsigned long long curr_total_ticks = read_total_system_ticks();
 
-  // Underflow protection
+  /* Underflow protection */
   unsigned long long tick_delta = 0;
   if (curr_total_ticks > ctx->last_total_ticks) {
     tick_delta = curr_total_ticks - ctx->last_total_ticks;
   }
 
-  // First call - just establish baseline
+  /* First call - just establish baseline */
   int is_first_call = (ctx->last_total_ticks == 0);
 
-  // Temporary storage for current samples
-  proc_sample_t curr_samples[PROC_MAX_TRACKED];
-  memset(curr_samples, 0, sizeof(curr_samples));
+  /* Heap-allocate to reduce stack pressure (~36KB) */
+  proc_sample_t *curr_samples = calloc(PROC_MAX_TRACKED, sizeof(proc_sample_t));
+  if (!curr_samples) {
+    return SPKT_ERR_ALLOC_FAILED;
+  }
   size_t curr_count = 0;
 
   DIR *proc_dir = opendir(PROC_PATH);
   if (!proc_dir) {
+    free(curr_samples);
     return SPKT_ERR_PROC_OPEN_DIR;
   }
 
+  /* Scan ALL processes, don't stop early - prevents blind spots */
   struct dirent *entry;
-  while ((entry = readdir(proc_dir)) != NULL && curr_count < PROC_MAX_TRACKED) {
-    // Skip non-numeric directories
+  while ((entry = readdir(proc_dir)) != NULL) {
+    /* Skip non-numeric directories */
     if (!isdigit((unsigned char)entry->d_name[0])) {
       continue;
     }
@@ -292,13 +296,25 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
       sample.baseline_cpu_pct = sample.cpu_pct;
     }
 
-    curr_samples[curr_count++] = sample;
+    /* Store if we have room; if full, replace lowest-CPU entry if this is better */
+    if (curr_count < PROC_MAX_TRACKED) {
+      curr_samples[curr_count++] = sample;
+    } else {
+      /* Buffer full - replace worst entry if this sample is better */
+      size_t worst_idx = PROC_MAX_TRACKED - 1;
+      if (sample.cpu_pct > curr_samples[worst_idx].cpu_pct) {
+        curr_samples[worst_idx] = sample;
+        /* Re-sort to maintain order (simple approach) */
+        qsort(curr_samples, PROC_MAX_TRACKED, sizeof(proc_sample_t), compare_samples_by_cpu);
+      }
+    }
   }
 
   closedir(proc_dir);
 
   if (curr_count == 0) {
     ctx->last_total_ticks = curr_total_ticks;
+    free(curr_samples);
     return SPKT_OK;
   }
 
@@ -332,11 +348,13 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
   }
   out->valid_rss_count = (uint32_t)copy_count;
 
-  /* Update context for next call */
+  /* Update context for next call - cap to array size */
   memset(ctx->samples, 0, sizeof(ctx->samples));
-  memcpy(ctx->samples, curr_samples, curr_count * sizeof(proc_sample_t));
-  ctx->count = curr_count;
+  size_t ctx_copy = (curr_count < PROC_MAX_TRACKED) ? curr_count : PROC_MAX_TRACKED;
+  memcpy(ctx->samples, curr_samples, ctx_copy * sizeof(proc_sample_t));
+  ctx->count = ctx_copy;
   ctx->last_total_ticks = curr_total_ticks;
 
+  free(curr_samples);
   return SPKT_OK;
 }

@@ -1,6 +1,5 @@
 # Spiketrace Configuration
 # Location: /etc/spiketrace/config.toml
-# Reload: Send SIGHUP to daemon (sudo pkill -HUP spiketrace)
 
 [anomaly_detection]
 # CPU spike detection: trigger when process CPU jumps by this percentage
@@ -48,8 +47,8 @@ enable_cpu_detection = true
 enable_memory_detection = true
 enable_swap_detection = true
 
-# Aggregate child/helper processes into a single logical spike (Mode B)
-# If true, groups new processes by PGID to avoid multiple alerts for one app launch.
+# Aggregate child/helper processes into a single logical spike
+# If true, groups new processes by PGID to avoid multiple alerts for one program launch.
 aggregate_related_processes = false
 
 [advanced]

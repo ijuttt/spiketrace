@@ -34,9 +34,10 @@ typedef enum {
   SPKT_ERR_DUMP_WRITE_FAILED = -601,
   SPKT_ERR_DUMP_RENAME_FAILED = -602,
 
-  // Generic errors
+  /* Generic errors */
   SPKT_ERR_INVALID_PARAM = -1,
   SPKT_ERR_NULL_POINTER = -2,
+  SPKT_ERR_ALLOC_FAILED = -3,
 } spkt_status_t;
 
 #endif

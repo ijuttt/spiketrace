@@ -1,7 +1,7 @@
 # Compiler and Flags
-CC = gcc
-CFLAGS = -Wall -Wextra -Iinclude -MMD -MP
-LDFLAGS = -lpthread
+CC ?= gcc
+CFLAGS += -Wall -Wextra -Iinclude -MMD -MP
+LDFLAGS += -lpthread
 PREFIX ?= /usr/local
 
 # Project Structure
@@ -67,21 +67,22 @@ clean:
 # Go TUI Viewer (requires Go toolchain)
 tui:
 	@mkdir -p $(BUILD_DIR)
-	@echo "Resolving Go dependencies..."
-	go mod tidy
-	go build -o $(TUI_OUT) ./cmd/spiketrace-view
+	go build -mod=vendor -o $(TUI_OUT) ./cmd/spiketrace-view
 
 install: all
-	install -D $(DAEMON_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace
-	install -D $(VIEWER_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view-cli
-	install -D $(TUI_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view
-	install -D spiketrace.service $(DESTDIR)/etc/systemd/system/spiketrace.service
-	mkdir -p $(DESTDIR)/var/lib/spiketrace
+	install -Dm755 $(DAEMON_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace
+	install -Dm755 $(VIEWER_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view-cli
+	install -Dm755 $(TUI_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view
+	install -Dm644 spiketrace.service $(DESTDIR)$(PREFIX)/lib/systemd/system/spiketrace.service
+	install -Dm644 spiketrace.tmpfiles $(DESTDIR)$(PREFIX)/lib/tmpfiles.d/spiketrace.conf
+	install -Dm644 LICENSE $(DESTDIR)/usr/share/licenses/spiketrace/LICENSE
+	install -Dm644 NOTICE $(DESTDIR)/usr/share/licenses/spiketrace/NOTICE
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/spiketrace
 	rm -f $(DESTDIR)$(PREFIX)/bin/spiketrace-view-cli
 	rm -f $(DESTDIR)$(PREFIX)/bin/spiketrace-view
 	rm -f $(DESTDIR)/etc/systemd/system/spiketrace.service
+	rm -rf $(DESTDIR)/usr/share/licenses/spiketrace
 
 .PHONY: all run clean install uninstall tui
