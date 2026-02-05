@@ -2,6 +2,7 @@
 
 #include "spike_dump.h"
 #include "json_writer.h"
+#include "time_format.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -49,24 +50,51 @@ static spkt_status_t serialize_proc_entry(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
 
+  /* Human-readable MiB value */
+  s = spkt_json_key(w, "rss_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(entry->rss_kib));
+  if (s != SPKT_OK)
+    return s;
+
   s = spkt_json_end_object(w);
   return s;
 }
 
 /* Serialize a single snapshot to JSON */
 static spkt_status_t serialize_snapshot(spkt_json_writer_t *w,
-                                        const spkt_snapshot_t *snap) {
+                                        const spkt_snapshot_t *snap,
+                                        uint64_t trigger_timestamp_ns) {
   spkt_status_t s;
 
   s = spkt_json_begin_object(w);
   if (s != SPKT_OK)
     return s;
 
-  /* Timestamp */
+  /* Timestamp (nanoseconds, for backward compatibility) */
   s = spkt_json_key(w, "timestamp_ns");
   if (s != SPKT_OK)
     return s;
   s = spkt_json_uint(w, snap->timestamp_monotonic_ns);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Human-readable timestamp in seconds */
+  s = spkt_json_key(w, "uptime_seconds");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_double(w, spkt_ns_to_seconds(snap->timestamp_monotonic_ns));
+  if (s != SPKT_OK)
+    return s;
+
+  /* Offset from trigger in seconds (negative = before trigger) */
+  s = spkt_json_key(w, "offset_seconds");
+  if (s != SPKT_OK)
+    return s;
+  double offset = spkt_ns_to_seconds(snap->timestamp_monotonic_ns) -
+                  spkt_ns_to_seconds(trigger_timestamp_ns);
+  s = spkt_json_double(w, offset);
   if (s != SPKT_OK)
     return s;
 
@@ -112,6 +140,7 @@ static spkt_status_t serialize_snapshot(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
 
+  /* KiB fields (backward compatibility) */
   s = spkt_json_key(w, "total_kib");
   if (s != SPKT_OK)
     return s;
@@ -144,6 +173,132 @@ static spkt_status_t serialize_snapshot(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
   s = spkt_json_uint(w, snap->mem.swap_free_ram_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Extended memory fields (schema v2) */
+  s = spkt_json_key(w, "active_kib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, snap->mem.active_ram_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "inactive_kib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, snap->mem.inactive_ram_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "dirty_kib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, snap->mem.dirty_ram_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "slab_kib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, snap->mem.slab_ram_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "shmem_kib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, snap->mem.shmem_ram_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Human-readable MiB fields (schema v3) */
+  s = spkt_json_key(w, "total_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.total_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "available_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.available_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "free_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.free_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "swap_total_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.swap_total_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "swap_free_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.swap_free_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "swap_used_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.swap_total_ram_kib -
+                                        snap->mem.swap_free_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "active_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.active_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "inactive_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.inactive_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "dirty_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.dirty_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "slab_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.slab_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "shmem_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(snap->mem.shmem_ram_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  /* Computed used percentage (schema v3) */
+  s = spkt_json_key(w, "used_pct");
+  if (s != SPKT_OK)
+    return s;
+  double used_pct = 100.0 * (double)(snap->mem.total_ram_kib -
+                                     snap->mem.available_ram_kib) /
+                    (double)snap->mem.total_ram_kib;
+  s = spkt_json_double(w, used_pct);
   if (s != SPKT_OK)
     return s;
 
@@ -196,25 +351,32 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
                                        const anomaly_result_t *anomaly) {
   spkt_status_t s;
   const char *type_str;
+  const char *type_desc;
 
   switch (anomaly->type) {
   case ANOMALY_TYPE_CPU_DELTA:
     type_str = "cpu_delta";
+    type_desc = "Process CPU usage jumped significantly from baseline";
     break;
   case ANOMALY_TYPE_CPU_NEW_PROC:
     type_str = "cpu_new_process";
+    type_desc = "New process spawned with high initial CPU usage";
     break;
   case ANOMALY_TYPE_MEM_DROP:
     type_str = "mem_drop";
+    type_desc = "Available memory dropped suddenly";
     break;
   case ANOMALY_TYPE_MEM_PRESSURE:
     type_str = "mem_pressure";
+    type_desc = "System under high memory pressure";
     break;
   case ANOMALY_TYPE_SWAP_SPIKE:
     type_str = "swap_spike";
+    type_desc = "Swap usage increased suddenly";
     break;
   default:
     type_str = "unknown";
+    type_desc = "Unknown anomaly type";
     break;
   }
 
@@ -227,6 +389,14 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
   s = spkt_json_string(w, type_str);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Human-readable type description (schema v3) */
+  s = spkt_json_key(w, "type_description");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_string(w, type_desc);
   if (s != SPKT_OK)
     return s;
 
@@ -302,7 +472,29 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
 
-  /* Swap fields */
+  /* Human-readable memory MiB fields (schema v3) */
+  s = spkt_json_key(w, "mem_available_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(anomaly->mem_available_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "mem_baseline_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(anomaly->mem_baseline_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "mem_delta_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_int(w, (int64_t)anomaly->mem_delta_kib / 1024);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Swap fields (KiB for backward compatibility) */
   s = spkt_json_key(w, "swap_used_kib");
   if (s != SPKT_OK)
     return s;
@@ -321,6 +513,28 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
   s = spkt_json_int(w, anomaly->swap_delta_kib);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Human-readable swap MiB fields (schema v3) */
+  s = spkt_json_key(w, "swap_used_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(anomaly->swap_used_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "swap_baseline_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, spkt_kib_to_mib(anomaly->swap_baseline_kib));
+  if (s != SPKT_OK)
+    return s;
+
+  s = spkt_json_key(w, "swap_delta_mib");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_int(w, (int64_t)anomaly->swap_delta_kib / 1024);
   if (s != SPKT_OK)
     return s;
 
@@ -451,10 +665,23 @@ spkt_status_t spike_dump_write(spike_dump_ctx_t *ctx,
     snapshot_count = SPIKE_DUMP_MAX_SNAPSHOTS;
   }
 
-  /* Generate unique filename using timestamp and counter */
+  /* Generate unique filename using wall-clock timestamp and counter.
+   * Format: spike_YYYY-MM-DD_HH-MM-SS_<count>.json
+   */
+  time_t now = time(NULL);
+  struct tm *tm_info = localtime(&now);
+  char time_str[64];
+
+  if (tm_info) {
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d_%H-%M-%S", tm_info);
+  } else {
+    /* Fallback if time calls fail, use timestamp */
+    snprintf(time_str, sizeof(time_str), "unknown_%lu", (unsigned long)timestamp_ns);
+  }
+
   written =
-      snprintf(filepath, sizeof(filepath), "%s/spike_%lu_%lu.json",
-               ctx->output_dir, (unsigned long)timestamp_ns, ctx->dump_count);
+      snprintf(filepath, sizeof(filepath), "%s/spike_%s_%lu.json",
+               ctx->output_dir, time_str, ctx->dump_count);
   if (written < 0 || (size_t)written >= sizeof(filepath)) {
     return SPKT_ERR_INVALID_PARAM;
   }
@@ -478,7 +705,26 @@ spkt_status_t spike_dump_write(spike_dump_ctx_t *ctx,
   if (s != SPKT_OK)
     goto cleanup;
 
-  /* Dump timestamp */
+  /* ISO8601 wall-clock timestamp (schema v3) */
+  char iso_buf[32];
+  if (spkt_format_iso8601(iso_buf, sizeof(iso_buf)) > 0) {
+    s = spkt_json_key(&writer, "created_at");
+    if (s != SPKT_OK)
+      goto cleanup;
+    s = spkt_json_string(&writer, iso_buf);
+    if (s != SPKT_OK)
+      goto cleanup;
+  }
+
+  /* Human-readable uptime in seconds (schema v3) */
+  s = spkt_json_key(&writer, "uptime_seconds");
+  if (s != SPKT_OK)
+    goto cleanup;
+  s = spkt_json_double(&writer, spkt_ns_to_seconds(timestamp_ns));
+  if (s != SPKT_OK)
+    goto cleanup;
+
+  /* Dump timestamp (nanoseconds, for backward compatibility) */
   s = spkt_json_key(&writer, "dump_timestamp_ns");
   if (s != SPKT_OK)
     goto cleanup;
@@ -503,7 +749,7 @@ spkt_status_t spike_dump_write(spike_dump_ctx_t *ctx,
     goto cleanup;
 
   for (size_t i = 0; i < snapshot_count; i++) {
-    s = serialize_snapshot(&writer, &snapshots[i]);
+    s = serialize_snapshot(&writer, &snapshots[i], timestamp_ns);
     if (s != SPKT_OK)
       goto cleanup;
   }

@@ -1,52 +1,87 @@
+# Compiler and Flags
 CC = gcc
-CFLAGS = -Wall -Wextra -Iinclude
-PREFIX = /usr/local
+CFLAGS = -Wall -Wextra -Iinclude -MMD -MP
 LDFLAGS = -lpthread
+PREFIX ?= /usr/local
 
-# Daemon sources
-DAEMON_SRC = \
-	src/anomaly_detector.c \
-	src/cpu.c \
-	src/json_writer.c \
-	src/mem.c \
-	src/proc.c \
-	src/ringbuf.c \
-	src/snapshot_builder.c \
-	src/spike_dump.c \
-	src/spktrace.c
-DAEMON_OUT = build/spiketrace
+# Project Structure
+SRC_DIR = src
+BUILD_DIR = build
+OBJ_DIR = $(BUILD_DIR)/obj
+
+# -----------------------------------------------------------------------------
+# Source Discovery & Object Generation
+# -----------------------------------------------------------------------------
+
+# Daemon sources (exclude viewer-specific files)
+DAEMON_SRCS = $(wildcard $(SRC_DIR)/*.c)
+DAEMON_SRC_FILTERED = $(filter-out $(SRC_DIR)/spktrace_view.c $(SRC_DIR)/json_reader.c, $(DAEMON_SRCS))
+DAEMON_OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(DAEMON_SRC_FILTERED))
 
 # Viewer sources
-VIEWER_SRC = \
-	src/json_reader.c \
-	src/spktrace_view.c
-VIEWER_OUT = build/spiketrace-view
+VIEWER_SRCS = $(SRC_DIR)/json_reader.c $(SRC_DIR)/spktrace_view.c
+VIEWER_OBJS = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(VIEWER_SRCS))
 
-all: $(DAEMON_OUT) $(VIEWER_OUT)
+# Binary Outputs
+DAEMON_OUT = $(BUILD_DIR)/spiketrace
+# Legacy CLI Viewer
+VIEWER_OUT = $(BUILD_DIR)/spiketrace-view-cli
+# TUI Viewer (New Default)
+TUI_OUT = $(BUILD_DIR)/spiketrace-view
 
-$(DAEMON_OUT): $(DAEMON_SRC)
-	$(CC) $(CFLAGS) $(DAEMON_SRC) -o $(DAEMON_OUT) $(LDFLAGS)
+# -----------------------------------------------------------------------------
+# Build Targets
+# -----------------------------------------------------------------------------
 
-$(VIEWER_OUT): $(VIEWER_SRC)
-	$(CC) $(CFLAGS) $(VIEWER_SRC) -o $(VIEWER_OUT)
+all: $(DAEMON_OUT) $(VIEWER_OUT) tui
+
+# Link Daemon Binary
+$(DAEMON_OUT): $(DAEMON_OBJS)
+	@mkdir -p $(@D)
+	$(CC) $(DAEMON_OBJS) -o $@ $(LDFLAGS)
+
+# Link CLI Viewer Binary
+$(VIEWER_OUT): $(VIEWER_OBJS)
+	@mkdir -p $(@D)
+	$(CC) $(VIEWER_OBJS) -o $@
+
+# Compile Object Files (Generic Pattern Rule)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Include Auto-Generated Dependencies
+-include $(DAEMON_OBJS:.o=.d)
+-include $(VIEWER_OBJS:.o=.d)
+
+# -----------------------------------------------------------------------------
+# Utility Targets
+# -----------------------------------------------------------------------------
 
 run: $(DAEMON_OUT)
 	$(DAEMON_OUT)
 
 clean:
-	rm -f $(DAEMON_OUT) $(VIEWER_OUT)
+	rm -rf $(BUILD_DIR)
 
-install: $(DAEMON_OUT) $(VIEWER_OUT)
+# Go TUI Viewer (requires Go toolchain)
+tui:
+	@mkdir -p $(BUILD_DIR)
+	@echo "Resolving Go dependencies..."
+	go mod tidy
+	go build -o $(TUI_OUT) ./cmd/spiketrace-view
+
+install: all
 	install -D $(DAEMON_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace
-	install -D $(VIEWER_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view
-	install -D spiketrace.service /etc/systemd/system/spiketrace.service
-	mkdir -p /var/lib/spiketrace
-	systemctl daemon-reload
+	install -D $(VIEWER_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view-cli
+	install -D $(TUI_OUT) $(DESTDIR)$(PREFIX)/bin/spiketrace-view
+	install -D spiketrace.service $(DESTDIR)/etc/systemd/system/spiketrace.service
+	mkdir -p $(DESTDIR)/var/lib/spiketrace
 
 uninstall:
-	systemctl stop spiketrace || true
-	systemctl disable spiketrace || true
 	rm -f $(DESTDIR)$(PREFIX)/bin/spiketrace
+	rm -f $(DESTDIR)$(PREFIX)/bin/spiketrace-view-cli
 	rm -f $(DESTDIR)$(PREFIX)/bin/spiketrace-view
-	rm -f /etc/systemd/system/spiketrace.service
-	systemctl daemon-reload
+	rm -f $(DESTDIR)/etc/systemd/system/spiketrace.service
+
+.PHONY: all run clean install uninstall tui

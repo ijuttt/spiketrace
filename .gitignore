@@ -1,10 +1,19 @@
-# Build artifacts
+# Binaries
 build/
 *.o
-*.out
+/spiketrace
+/spiketrace-view
+/spiketrace-view-cli
 
-# Tooling & LSP
+# Artifacts
+*.d
+*.so
+*.a
+*.out
 compile_commands.json
+
+# Go
+vendor/
 .clangd
 
 # Experimental code

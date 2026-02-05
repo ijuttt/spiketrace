@@ -56,6 +56,9 @@ typedef struct {
 
   /* Cooldown */
   uint64_t cooldown_ns;
+
+  /* Baseline smoothing (lower = more stable) */
+  double memory_baseline_alpha;
 } anomaly_config_t;
 
 /* Result of anomaly evaluation */
@@ -127,11 +130,5 @@ anomaly_result_t anomaly_evaluate(const anomaly_config_t *config,
 /* Check if any anomaly was detected */
 bool anomaly_should_dump(const anomaly_result_t *result);
 
-/* Legacy wrapper for backward compatibility */
-anomaly_result_t anomaly_evaluate_procs(const anomaly_config_t *config,
-                                        anomaly_state_t *state,
-                                        const proc_sample_t *samples,
-                                        size_t sample_count,
-                                        uint64_t current_timestamp_ns);
 
 #endif

@@ -138,16 +138,6 @@ void spkt_json_cleanup(spkt_json_writer_t *writer) {
   writer->error = false;
 }
 
-void spkt_json_reset(spkt_json_writer_t *writer) {
-  if (!writer || !writer->buffer) {
-    return;
-  }
-
-  writer->length = 0;
-  writer->buffer[0] = '\0';
-  writer->needs_comma = false;
-  writer->error = false;
-}
 
 spkt_status_t spkt_json_begin_object(spkt_json_writer_t *writer) {
   if (!writer) {

@@ -1,0 +1,54 @@
+# Spiketrace Configuration
+# Location: ~/.config/spiketrace/config.toml
+# Reload: Send SIGHUP to daemon (kill -HUP $(pidof spiketrace))
+
+[anomaly_detection]
+# CPU spike detection: trigger when process CPU jumps by this percentage
+cpu_delta_threshold_pct = 10.0        # default: 10.0, range: 0.1-100.0
+
+# New process detection: trigger when new process uses this much CPU
+new_process_threshold_pct = 5.0       # default: 5.0, range: 0.1-100.0
+
+# Memory drop detection: trigger when available RAM drops by this much (MiB)
+mem_drop_threshold_mib = 512          # default: 512, range: 1-1048576
+
+# Memory pressure: trigger when RAM usage exceeds this percentage
+mem_pressure_threshold_pct = 90.0     # default: 90.0, range: 50.0-100.0
+
+# Swap spike detection: trigger when swap increases by this much (MiB)
+swap_spike_threshold_mib = 256        # default: 256, range: 1-1048576
+
+# Cooldown between dumps for same anomaly type (seconds)
+cooldown_seconds = 5.0                # default: 5.0, range: 0.1-300.0
+
+[sampling]
+# How often to sample system state (seconds)
+sampling_interval_seconds = 1.0       # default: 1.0, range: 0.1-10.0
+
+# Ring buffer capacity (number of snapshots kept in memory)
+ring_buffer_capacity = 60             # default: 60, range: 10-600
+
+# Snapshots included per dump (context before spike)
+context_snapshots_per_dump = 10       # default: 10, range: 1-60
+
+[process_collection]
+# Maximum processes to track for CPU delta calculation
+max_processes_tracked = 512           # default: 512, range: 10-1024
+
+# Top processes stored per snapshot
+top_processes_stored = 10             # default: 10, range: 1-50
+
+[output]
+# Directory for spike dumps (must exist and be writable)
+output_directory = "/var/lib/spiketrace"
+
+[features]
+# Enable/disable detection types
+enable_cpu_detection = true
+enable_memory_detection = true
+enable_swap_detection = true
+
+[advanced]
+# EMA smoothing factors (lower = more stable baseline)
+memory_baseline_alpha = 0.2           # default: 0.2, range: 0.01-0.9
+process_baseline_alpha = 0.3          # default: 0.3, range: 0.01-0.9

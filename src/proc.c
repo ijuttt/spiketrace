@@ -14,8 +14,7 @@
 #define PROC_PATH "/proc"
 #define STAT_BUF_SIZE 512
 #define STATM_BUF_SIZE 128
-#define BASELINE_ALPHA                                                         \
-  0.3 /* EMA smoothing for baseline (higher = more responsive) */
+#define DEFAULT_BASELINE_ALPHA 0.3 /* EMA smoothing for baseline (higher = more responsive) */
 
 static long page_size_bytes = 0;
 
@@ -188,6 +187,8 @@ spkt_status_t proc_context_init(proc_context_t *ctx) {
     return SPKT_ERR_NULL_POINTER;
   }
   memset(ctx, 0, sizeof(*ctx));
+  ctx->baseline_alpha = DEFAULT_BASELINE_ALPHA;
+  ctx->top_processes_limit = MAX_PROCS; /* Default to max */
   return SPKT_OK;
 }
 
@@ -275,8 +276,8 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
       sample.sample_count =
           (prev->sample_count < 255) ? prev->sample_count + 1 : 255;
       /* EMA: baseline = alpha * current + (1 - alpha) * prev_baseline */
-      sample.baseline_cpu_pct = BASELINE_ALPHA * sample.cpu_pct +
-                                (1.0 - BASELINE_ALPHA) * prev->baseline_cpu_pct;
+      sample.baseline_cpu_pct = ctx->baseline_alpha * sample.cpu_pct +
+                                (1.0 - ctx->baseline_alpha) * prev->baseline_cpu_pct;
     } else {
       /* New process - establish initial baseline */
       sample.is_new = true;
@@ -297,7 +298,10 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
   /* Sort by CPU and copy top processes */
   qsort(curr_samples, curr_count, sizeof(proc_sample_t), compare_samples_by_cpu);
 
-  size_t copy_count = (curr_count < MAX_PROCS) ? curr_count : MAX_PROCS;
+  size_t copy_count = (curr_count < ctx->top_processes_limit) ? curr_count : ctx->top_processes_limit;
+  if (copy_count > MAX_PROCS) {
+    copy_count = MAX_PROCS; /* Clamp to array size */
+  }
   for (size_t i = 0; i < copy_count; i++) {
     out->entries[i].pid = curr_samples[i].pid;
     strncpy(out->entries[i].comm, curr_samples[i].comm,

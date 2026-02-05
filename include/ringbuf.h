@@ -27,21 +27,15 @@ spkt_status_t ringbuf_cleanup(ringbuffer_t *rb);
 /* Push snapshot to buffer (overwrites oldest if full) */
 spkt_status_t ringbuf_push(ringbuffer_t *rb, const spkt_snapshot_t *snapshot);
 
-/* Get all valid snapshots (oldest to newest) */
-spkt_status_t ringbuf_get_all(const ringbuffer_t *rb, spkt_snapshot_t *dest,
-                              size_t max_count, size_t *out_count);
 
 /* Get most recent N snapshots */
 spkt_status_t ringbuf_get_recent(const ringbuffer_t *rb, spkt_snapshot_t *dest,
                                  size_t n, size_t *out_count);
 
-/* Check if buffer is full */
-bool ringbuf_is_full(const ringbuffer_t *rb);
 
 /* Get current number of stored snapshots */
 size_t ringbuf_count(const ringbuffer_t *rb);
 
-/* Clear all snapshots */
-spkt_status_t ringbuf_clear(ringbuffer_t *rb);
+
 
 #endif

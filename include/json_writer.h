@@ -37,8 +37,6 @@ spkt_status_t spkt_json_init(spkt_json_writer_t *writer, size_t capacity);
 /* Cleanup writer resources */
 void spkt_json_cleanup(spkt_json_writer_t *writer);
 
-/* Reset writer for reuse (clears buffer, keeps allocation) */
-void spkt_json_reset(spkt_json_writer_t *writer);
 
 /* Object/array delimiters */
 spkt_status_t spkt_json_begin_object(spkt_json_writer_t *writer);

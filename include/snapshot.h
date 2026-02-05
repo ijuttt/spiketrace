@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define MAX_CORES 64
+#define MAX_CORES 256
 #define MAX_PROCS 10
 
 /* CPU usage snapshot data */

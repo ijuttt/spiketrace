@@ -1,155 +1,192 @@
 # spiketrace
 
-a lightweight background daemon that acts as a **black box recorder** for short-lived cpu, ram, and swap spikes.
+Lightweight C daemon for Linux capturing snapshots of short resource spikes for performance troubleshooting and security anomaly detection.
 
-## the problem
+## Use Cases
 
-your laptop fan suddenly spins up loudly for 2–3 seconds, then settles back down. by the time you open `htop` or `btop`, everything looks normal. you have no idea what caused it.
+### Performance Troubleshooting
+- Capture what caused that mysterious 2-second fan spin-up
+- Identify runaway processes before they disappear
+- Debug intermittent slowdowns with historical context
 
-spiketrace solves this by continuously monitoring system state in the background and automatically capturing a snapshot when a spike is detected — including the 10 seconds of history *before* the spike occurred.
+### Security & Threat Detection
+- **Crypto miner detection**: Catch mining malware that spikes CPU then hides
+- **Suspicious process spawns**: Alert on new processes consuming unusual resources
+- **Memory anomalies**: Detect payload injection or memory-hungry backdoors
+- **Compromised server forensics**: Review system state *before* an incident
 
-## what spiketrace is not
+### System Administration
+- Post-mortem analysis of transient issues
+- Baseline deviation monitoring
+- Resource abuse detection in shared environments
 
-- **not a real-time monitor** — use `htop`/`btop` for that
-- **not a profiler** — does not trace syscalls or stack frames
-- **not a replacement for top** — it's a recorder, not a viewer
-- **not for sustained high load** — designed for transient spikes only
+## How It Works
 
-## how it works
-
-1. **passive sampling**: daemon reads `/proc/stat`, `/proc/meminfo`, and `/proc/[pid]` every 1 second
-2. **ring buffer**: stores last 60 samples (1 minute of history)
-3. **anomaly detection**: triggers on:
-   - cpu spike (process jumps 10%+ from baseline)
-   - new process spike (spawns at 5%+ cpu)
-   - memory drop (available ram drops 512+ mib suddenly)
-   - memory pressure (90%+ ram used)
-   - swap spike (swap usage jumps 256+ mib)
-4. **json persistence**: on trigger, extracts 10 recent snapshots and writes atomically to disk
-5. **cli inspection**: `spiketrace-view` displays dumps in human-readable format
-
-## build & install
-
-```bash
-# build
-make
-
-# install (requires root)
-sudo make install
+```
+┌────────────────┐    ┌────────────────┐    ┌────────────────┐    ┌────────────────┐
+│    /proc/*     │──▶│  Ring Buffer   │──▶│    Anomaly     │──▶│   JSON Dump    │
+│    sampling    │    │  (60 samples)  │    │   Detection    │    │   + Context    │
+└────────────────┘    └────────────────┘    └────────────────┘    └────────────────┘
+    1s interval         1 min history           triggers             atomic write
 ```
 
-this installs:
-- `/usr/local/bin/spiketrace` — the daemon
-- `/usr/local/bin/spiketrace-view` — the cli viewer
+1. **Passive Sampling**: Reads `/proc/stat`, `/proc/meminfo`, `/proc/[pid]` every 1 second
+2. **Ring Buffer**: Stores last 60 samples (1 minute of history)
+3. **Anomaly Detection**: Triggers on CPU spikes, memory drops, swap usage, new process spawns
+4. **JSON Persistence**: Atomically writes 10 recent snapshots on trigger
+5. **Viewers**: Interactive TUI (Go) and legacy CLI (C) for inspecting dumps
+
+## Requirements
+
+- Linux (uses `/proc` filesystem)
+- GCC with C99 support + pthreads
+- Go 1.21+ (for the TUI viewer)
+
+## Build & Install
+
+```bash
+make                    # build all components (daemon, TUI, CLI)
+sudo make install       # install to /usr/local/bin
+```
+
+Installs:
+- `/usr/local/bin/spiketrace` — daemon
+- `/usr/local/bin/spiketrace-view` — interactive TUI viewer (default)
+- `/usr/local/bin/spiketrace-view-cli` — legacy CLI viewer
 - `/etc/systemd/system/spiketrace.service` — systemd unit (opt-in)
-- `/var/lib/spiketrace/` — output directory for json dumps
+- `/var/lib/spiketrace/` — output directory for JSON dumps
 
-## running spiketrace
+## Running
 
-### systemd (recommended)
-
-the service is **opt-in** — it is installed but not enabled by default.
+### Systemd (Recommended)
 
 ```bash
-# enable and start
-sudo systemctl enable --now spiketrace
-
-# check status
-sudo systemctl status spiketrace
-
-# view logs
-journalctl -u spiketrace -f
-
-# stop
-sudo systemctl stop spiketrace
+sudo systemctl enable --now spiketrace   # enable and start
+sudo systemctl status spiketrace         # check status
+journalctl -u spiketrace -f              # view logs
 ```
 
-### manual execution
+### Manual
 
 ```bash
-sudo ./build/spiketrace
+sudo ./build/spiketrace                  # logs to stderr, Ctrl+C to stop
 ```
 
-the daemon logs to stderr. press ctrl+c to stop.
+## Interactive Analysis (TUI)
 
-## viewing spike data
-
-json dumps are written to `/var/lib/spiketrace/` with filenames like:
-```
-spike_<timestamp>_<counter>.json
-```
-
-### using spiketrace-view
+The `spiketrace-view` tool provides a terminal interface for analyzing dumps. It automatically discovers JSON files in your data directory.
 
 ```bash
-spiketrace-view /var/lib/spiketrace/spike_*.json
+spiketrace-view
 ```
 
-example output:
+### UI Layout
+The viewer is divided into 3 logical panels:
+1.  **Explorer (Left)**: List of all captured dumps, sorted by time.
+2.  **Trigger (Top Right)**: Details of the anomaly that triggered the snapshot (e.g., "CPU Delta > 10%").
+3.  **Details (Bottom Right)**: The heart of the analysis. Shows the process list for the selected snapshot.
+
+### Features
+-   **Auto-Discovery**: Automatically finds and lists `spike_*.json` files.
+-   **Persistence Tracking**: The `HIST` column uses dots `[●○○●]` to visualize if a process existed in previous snapshots.
+    -   `●` (Filled): Process was present in that snapshot.
+    -   `○` (Empty): Process was missing (started later or terminated).
+-   **Time Travel**: Navigate through the 60-snapshot history (1 minute) used to detect the spike.
+
+### Keybindings
+
+| Key | Action |
+| :--- | :--- |
+| `Tab` | Switch focus between panels (Explorer <-> Details) |
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `Enter` | Load selected dump file |
+| `]` / `n` | Next snapshot (Time travel forward) |
+| `[` / `p` | Previous snapshot (Time travel backward) |
+| `q` | Quit |
+
+### Legacy CLI Output
+Dump summary to stdout (useful for piping to grep/jq):
+
+```bash
+spiketrace-view-cli /var/lib/spiketrace/spike_*.json
 ```
-spike dump: spike_123456789_0.json
-timestamp (monotonic): 123456789 ns
 
-=== spike trigger ===
-type: cpu_delta
-process: [12345] firefox
-cpu: 85.2% (baseline: 5.0%, delta: +80.2%)
+### What's Recorded
+Each dump contains:
+- **Trigger**: Anomaly type, causing process PID/name, metrics
+- **Snapshots** (10 most recent):
+    - CPU: global + per-core usage
+    - Memory: total, available, active, inactive, dirty, slab, swap
+    - Top 10 processes by CPU and by RSS
 
-=== top processes by cpu ===
- 1. [12345] firefox           85.2%  (rss: 2048 mib)
- 2. [ 1001] xorg              12.0%  (rss: 512 mib)
+## Configuration
 
-=== top processes by rss ===
- 1. [12345] firefox           2048 mib  (cpu: 85.2%)
- 2. [ 9876] chromium          1536 mib  (cpu: 3.1%)
-```
+By default, `spiketrace` uses safe compiled-in parameters.
 
-### what's recorded
+- **Config Path**: `~/.config/spiketrace/config.toml`
+- **Template**: `examples/config.toml`
+- **Reload Command**: `sudo pkill -HUP spiketrace` (zero downtime)
 
-each dump contains:
-- **trigger**: type, process pid/name, metrics
-- **snapshots** (10 most recent):
-  - timestamp
-  - global + per-core cpu usage
-  - memory stats (total, available, swap)
-  - top 10 processes by cpu
-  - top 10 processes by rss
+### Configuration Reference
 
-## default thresholds
+Below is a complete reference of every configuration key available in `config.toml`, including default values and descriptions.
 
-| threshold | default | description |
-|-----------|---------|-------------|
-| cpu delta | 10% | process cpu jump from baseline |
-| new process | 5% | new process initial cpu |
-| memory drop | 512 mib | sudden available ram drop |
-| memory pressure | 90% | ram used triggers alert |
-| swap spike | 256 mib | sudden swap usage increase |
-| cooldown | 5 sec | per-trigger cooldown |
+#### Anomaly Detection
+| Key                          | Default | Description                                                                              |
+|------------------------------|---------|------------------------------------------------------------------------------------------|
+| `cpu_delta_threshold_pct`    | `10.0`  | Trigger if a process's CPU usage increases by this percentage points above its baseline. |
+| `new_process_threshold_pct`  | `5.0`   | Trigger if a *new* process immediately consumes this much CPU.                           |
+| `mem_drop_threshold_mib`     | `512`   | Trigger if available RAM suddenly drops by this amount (in MiB).                         |
+| `mem_pressure_threshold_pct` | `90.0`  | Trigger if total system memory usage exceeds this percentage.                            |
+| `swap_spike_threshold_mib`   | `256`   | Trigger if swap usage increases by this amount (in MiB).                                 |
+| `cooldown_seconds`           | `5.0`   | Minimum time to wait before triggering again for the same anomaly/process.               |
 
-thresholds are compile-time constants. edit `include/anomaly_detector.h` to change.
+#### Sampling Engine
+| Key                          | Default | Description                                                                  |
+|------------------------------|---------|------------------------------------------------------------------------------|
+| `sampling_interval_seconds`  | `1.0`   | Time between checks. Lower values increase CPU usage but catch shorter spikes.|
+| `ring_buffer_capacity`       | `60`    | Number of past snapshots to keep in memory (history length).                 |
+| `context_snapshots_per_dump` | `10`    | How many historical snapshots to include in the JSON dump when a trigger fires.|
 
-## limitations
+#### Process Tracking
+| Key                     | Default | Description                                                               |
+|-------------------------|---------|---------------------------------------------------------------------------|
+| `max_processes_tracked` | `512`   | Maximum number of processes to track baselines for (saves daemon memory). |
+| `top_processes_stored`  | `10`    | Number of "Top CPU" and "Top RSS" processes saved inside *each* snapshot. |
 
-- **1-second polling granularity**: very short spikes (<1 second) may be partially missed
-- **attribution, not causation**: shows *which* process spiked, not *why*
-- **no network/disk i/o**: only monitors cpu, ram, and swap
-- **top 10 only**: snapshot includes top 10 processes by cpu and by rss
+#### Features (Toggles)
+| Key                       | Default | Description                                  |
+|---------------------------|---------|----------------------------------------------|
+| `enable_cpu_detection`    | `true`  | Enable/Disable CPU spike triggers.           |
+| `enable_memory_detection` | `true`  | Enable/Disable Memory drop/pressure triggers.|
+| `enable_swap_detection`   | `true`  | Enable/Disable Swap usage triggers.          |
 
-## security notes
+#### Output
+| Key                | Default               | Description                                |
+|--------------------|-----------------------|--------------------------------------------|
+| `output_directory` | `/var/lib/spiketrace` | Directory where JSON dump files are written.|
 
-“is this spying on my processes?”
+#### Advanced Tuning
+| Key                      | Default | Description                                                                |
+|--------------------------|---------|----------------------------------------------------------------------------|
+| `memory_baseline_alpha`  | `0.2`   | EMA weight for memory baseline (0.00-1.00). Higher = baseline adapts faster.|
+| `process_baseline_alpha` | `0.3`   | EMA weight for process CPU baseline (0.00-1.00).                           |
 
-spiketrace runs as root in order to read system-wide /proc data.
+## Limitations
 
-- it does not execute external commands.
-- it does not open network sockets.
-- it writes json snapshots locally only.
-- no data leaves the system unless the user explicitly copies it.
+- **1-second granularity**: Very short spikes (<1s) may be partially missed
+- **Attribution, not causation**: Shows *which* process spiked, not *why*
+- **CPU/RAM/Swap only**: No network or disk I/O monitoring
+- **Top 10 processes**: Per snapshot, by CPU and by RSS
 
-root access is required to read kernel virtual memory at `/proc` across all processes.
+## Security
 
-## requirements
+spiketrace runs as root to read system-wide `/proc` data.
 
-- linux (uses `/proc` filesystem)
-- gcc with c99 support
-- pthreads
+- Does not execute external commands
+- Does not open network sockets
+- Writes JSON locally only
+- No data leaves the system
+
+Root access is required to read kernel virtual memory at `/proc` across all processes.
