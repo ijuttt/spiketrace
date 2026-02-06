@@ -12,8 +12,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/jegesmk/spiketrace/internal/processor"
-	"github.com/jegesmk/spiketrace/internal/ui/styles"
+	"github.com/ijuttt/spiketrace/internal/processor"
+	"github.com/ijuttt/spiketrace/internal/ui/styles"
 )
 
 // -----------------------------------------------------------------------------

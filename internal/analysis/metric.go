@@ -6,7 +6,7 @@
 // derived metrics, time-series data, and cross-snapshot analysis.
 package analysis
 
-import "github.com/jegesmk/spiketrace/internal/model"
+import "github.com/ijuttt/spiketrace/internal/model"
 
 // Metric defines a pluggable data extractor for snapshot analysis.
 // Implement this interface to add new metrics without modifying rendering code.

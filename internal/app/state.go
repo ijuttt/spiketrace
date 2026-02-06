@@ -7,7 +7,7 @@ package app
 import (
 	"sync"
 
-	"github.com/jegesmk/spiketrace/internal/model"
+	"github.com/ijuttt/spiketrace/internal/model"
 )
 
 // State holds the application state in a thread-safe manner.

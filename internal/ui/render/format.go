@@ -7,7 +7,7 @@ package render
 import (
 	"fmt"
 
-	"github.com/jegesmk/spiketrace/internal/model"
+	"github.com/ijuttt/spiketrace/internal/model"
 )
 
 // Trigger formats the trigger information for display.

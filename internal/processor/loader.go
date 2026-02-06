@@ -6,7 +6,7 @@ package processor
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/jegesmk/spiketrace/internal/model"
+	"github.com/ijuttt/spiketrace/internal/model"
 )
 
 // -----------------------------------------------------------------------------
