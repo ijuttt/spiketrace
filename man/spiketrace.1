@@ -1,0 +1,83 @@
+.TH SPIKETRACE 1 "February 2026" "spiketrace 0.1.0" "User Commands"
+.SH NAME
+spiketrace \- system resource spike detection daemon
+.SH SYNOPSIS
+.B spiketrace
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B spiketrace
+is a lightweight daemon that monitors system resources (CPU, memory, swap)
+and captures snapshots when anomalies are detected. It writes JSON dumps to
+/var/lib/spiketrace for later analysis with
+.BR spiketrace-view (1).
+.PP
+The daemon reads process information from /proc and maintains a ring buffer
+of recent system state. When a spike is detected (e.g., sudden CPU usage
+increase, memory drop, or swap spike), it writes the recent history to a
+JSON file for forensic analysis.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Display help message and exit.
+.TP
+.BR \-v ", " \-\-version
+Display version information and exit.
+.SH SIGNALS
+.TP
+.B SIGHUP
+Reload configuration from /etc/spiketrace/config.toml without restarting.
+.TP
+.B SIGTERM, SIGINT
+Graceful shutdown.
+.SH FILES
+.TP
+.I /etc/spiketrace/config.toml
+System-wide configuration file. See
+.BR spiketrace.conf (5)
+for format details.
+.TP
+.I /var/lib/spiketrace/
+Output directory for spike dumps. Files are named
+spike_YYYY-MM-DD_HH-MM-SS_N.json.
+.SH EXIT STATUS
+.TP
+.B 0
+Success (or \-\-help/\-\-version was requested).
+.TP
+.B 1
+Error (invalid arguments, initialization failure, etc.).
+.SH EXAMPLES
+.PP
+Run as a systemd service (recommended):
+.RS
+.nf
+sudo systemctl enable \-\-now spiketrace
+.fi
+.RE
+.PP
+Run manually for debugging:
+.RS
+.nf
+sudo spiketrace
+.fi
+.RE
+.PP
+Reload configuration without restart:
+.RS
+.nf
+sudo pkill \-HUP spiketrace
+.fi
+.RE
+.SH SEE ALSO
+.BR spiketrace-view (1),
+.BR spiketrace.conf (5),
+.BR proc (5)
+.SH BUGS
+Report bugs at https://github.com/ijuttt/spiketrace/issues
+.SH AUTHOR
+Written by ijuttt.
+.SH COPYRIGHT
+Copyright \(co 2026 ijuttt. License GPLv2: GNU GPL version 2 only.
+.br
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.

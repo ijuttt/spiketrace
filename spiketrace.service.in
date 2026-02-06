@@ -1,0 +1,28 @@
+[Unit]
+Description=Spiketrace system resource spike capture daemon
+Documentation=https://github.com/ijuttt/spiketrace
+After=local-fs.target systemd-tmpfiles-setup.service
+Wants=systemd-tmpfiles-setup.service
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/spiketrace
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spiketrace
+
+# Security Hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ReadWritePaths=@STATEDIR@
+ReadOnlyPaths=@SYSCONFDIR@/spiketrace
+
+[Install]
+WantedBy=multi-user.target

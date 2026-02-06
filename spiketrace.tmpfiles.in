@@ -1,0 +1,4 @@
+# spiketrace state directory
+# Created by systemd-tmpfiles on boot
+# Group 'spiketrace' allows non-root users to read spike dumps
+d @STATEDIR@ 0750 root spiketrace -
