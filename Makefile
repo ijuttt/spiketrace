@@ -58,7 +58,7 @@ TUI_OUT = $(BUILD_DIR)/spiketrace-view
 # Build Targets
 # -----------------------------------------------------------------------------
 
-all: $(DAEMON_OUT) $(VIEWER_OUT) tui
+all: $(DAEMON_OUT) $(VIEWER_OUT) tui gen-service
 
 # Link Daemon Binary
 $(DAEMON_OUT): $(DAEMON_OBJS)
@@ -129,21 +129,26 @@ install-license:
 	install -Dm644 NOTICE $(DESTDIR)$(LICENSEDIR)/NOTICE
 
 install-systemd:
-ifeq ($(PREFIX),/usr)
-	# Generate service file with all paths templated
+
+gen-service:
+	@mkdir -p $(BUILD_DIR)
+	# Generate service file with all paths templated - run for ALL builds
 	sed -e 's|@BINDIR@|$(BINDIR)|g' \
 	    -e 's|@STATEDIR@|$(STATEDIR)|g' \
 	    -e 's|@SYSCONFDIR@|$(SYSCONFDIR)|g' \
 	    spiketrace.service.in > $(BUILD_DIR)/spiketrace.service
-	install -Dm644 $(BUILD_DIR)/spiketrace.service $(DESTDIR)$(SYSTEMDDIR)/system/spiketrace.service
 	# Generate tmpfiles.d config from template
 	sed 's|@STATEDIR@|$(STATEDIR)|g' spiketrace.tmpfiles.in > $(BUILD_DIR)/spiketrace.conf
+
+install-systemd:
+ifeq ($(PREFIX),/usr)
+	install -Dm644 $(BUILD_DIR)/spiketrace.service $(DESTDIR)$(SYSTEMDDIR)/system/spiketrace.service
 	install -Dm644 $(BUILD_DIR)/spiketrace.conf $(DESTDIR)$(TMPFILESDIR)/spiketrace.conf
 	@echo "Installed systemd service and tmpfiles.d config"
 else
-	@echo "Skipping systemd files (PREFIX=$(PREFIX) != /usr)"
-	@echo "For manual systemd setup, copy spiketrace.service to /etc/systemd/system/"
-	@echo "and edit ExecStart= to point to $(BINDIR)/spiketrace"
+	@echo "Skipping systemd auto-install (PREFIX=$(PREFIX) != /usr)"
+	@echo "Use the generated file: $(BUILD_DIR)/spiketrace.service"
+	@echo "Manual install: sudo cp $(BUILD_DIR)/spiketrace.service /etc/systemd/system/"
 endif
 
 # -----------------------------------------------------------------------------

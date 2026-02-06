@@ -54,6 +54,9 @@ cd spiketrace
 
 make                    # build all components
 sudo make install       # install to /usr/local
+
+# IMPORTANT: For /usr/local installs, you must copy the service file manually:
+sudo cp build/spiketrace.service /etc/systemd/system/
 ```
 
 For a distro-compliant install (installing to `/usr` and including systemd units):
