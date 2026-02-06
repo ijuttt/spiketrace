@@ -155,11 +155,11 @@ func (c ConfirmDialog) View() string {
 
 	// Build dialog content
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("⚠️  Konfirmasi"))
+	b.WriteString(titleStyle.Render("⚠️  Confirmation"))
 	b.WriteString("\n")
 	b.WriteString(messageStyle.Render(c.message))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("[y] Ya    [n/esc] Batal"))
+	b.WriteString(hintStyle.Render("[y] Yes    [n/esc] Cancel"))
 
 	dialog := dialogStyle.Render(b.String())
 

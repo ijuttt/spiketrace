@@ -84,17 +84,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if result.Confirmed {
 				switch result.Action {
 				case components.ConfirmDeleteSingle:
-					a.statusMsg = "Menghapus file..."
+					a.statusMsg = "Deleting file..."
 					return a, processor.DeleteDumpCmd(result.Data)
 				case components.ConfirmDeleteAll:
-					a.statusMsg = "Menghapus semua file..."
+					a.statusMsg = "Deleting all files..."
 					return a, processor.DeleteAllDumpsCmd(
 						config.GetDataPaths(),
 						config.DumpFileExtension,
 					)
 				}
 			} else {
-				a.statusMsg = "Penghapusan dibatalkan"
+				a.statusMsg = "Deletion cancelled"
 			}
 			return a, nil
 		}
@@ -140,7 +140,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					filename := filepath.Base(selected)
 					a.confirmDialog.Show(
 						components.ConfirmDeleteSingle,
-						fmt.Sprintf("Hapus file '%s'?", filename),
+						fmt.Sprintf("Delete file '%s'?", filename),
 						selected,
 					)
 				}
@@ -151,7 +151,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.activePanel == PanelExplorer && a.explorer.FileCount() > 0 {
 				a.confirmDialog.Show(
 					components.ConfirmDeleteAll,
-					fmt.Sprintf("Hapus SEMUA %d file log?", a.explorer.FileCount()),
+					fmt.Sprintf("Delete ALL %d log files?", a.explorer.FileCount()),
 					"",
 				)
 			}
@@ -203,7 +203,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case processor.DeleteResultMsg:
 		if msg.Success {
-			a.statusMsg = fmt.Sprintf("✓ File dihapus: %s", filepath.Base(msg.Path))
+			a.statusMsg = fmt.Sprintf("✓ File deleted: %s", filepath.Base(msg.Path))
 			a.errMsg = ""
 			// Clear current file if it was deleted
 			if a.currentFile == msg.Path {
@@ -218,7 +218,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 		} else {
 			a.errMsg = msg.Err.Error()
-			a.statusMsg = "Gagal menghapus file"
+			a.statusMsg = "Failed to delete file"
 		}
 
 	case processor.DeleteAllResultMsg:
@@ -226,9 +226,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.trigger.SetDump(nil)
 		a.viewer.SetState(nil, 0)
 		if msg.FailedCount > 0 {
-			a.statusMsg = fmt.Sprintf("Dihapus %d file, %d gagal", msg.DeletedCount, msg.FailedCount)
+			a.statusMsg = fmt.Sprintf("Deleted %d files, %d failed", msg.DeletedCount, msg.FailedCount)
 		} else {
-			a.statusMsg = fmt.Sprintf("✓ Semua %d file dihapus", msg.DeletedCount)
+			a.statusMsg = fmt.Sprintf("✓ All %d files deleted", msg.DeletedCount)
 		}
 		a.errMsg = ""
 		// Refresh file list
