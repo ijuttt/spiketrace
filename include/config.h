@@ -7,8 +7,8 @@
 #include "spkt_common.h"
 
 #include <stdbool.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /* Maximum config file size (64 KiB) */
 #define CONFIG_MAX_FILE_SIZE (64 * 1024)
@@ -32,6 +32,14 @@ typedef enum {
   TRIGGER_SCOPE_PARENT,
   TRIGGER_SCOPE_SYSTEM,
 } spkt_trigger_scope_t;
+
+/* Log cleanup policy */
+typedef enum {
+  LOG_CLEANUP_DISABLED = 0, /* No automatic cleanup */
+  LOG_CLEANUP_BY_AGE,       /* Delete logs older than N days */
+  LOG_CLEANUP_BY_COUNT,     /* Keep only N most recent logs */
+  LOG_CLEANUP_BY_SIZE,      /* Delete when total size exceeds N MiB */
+} log_cleanup_policy_t;
 
 /* Configuration structure holding all user-configurable values */
 typedef struct {
@@ -68,6 +76,14 @@ typedef struct {
   /* Trigger policy */
   spkt_trigger_scope_t trigger_scope;
 
+  /* Log management configuration */
+  bool enable_auto_cleanup;            /* Enable automatic log cleanup */
+  log_cleanup_policy_t cleanup_policy; /* Which cleanup policy to use */
+  uint32_t log_max_age_days; /* For BY_AGE: delete logs older than N days */
+  uint32_t log_max_count;    /* For BY_COUNT: keep only N most recent logs */
+  uint32_t log_max_total_size_mib;   /* For BY_SIZE: max total size in MiB */
+  uint32_t cleanup_interval_minutes; /* How often to run cleanup check */
+
   /* Internal: config loaded flag */
   bool loaded;
 } spkt_config_t;
@@ -86,5 +102,12 @@ spkt_status_t config_get_default_path(char *path, size_t path_size);
 
 /* Check if config file exists at path */
 bool config_file_exists(const char *path);
+
+/* Convert log_cleanup_policy_t to string (for config parsing) */
+const char *log_cleanup_policy_to_string(log_cleanup_policy_t policy);
+
+/* Parse string to log_cleanup_policy_t (returns LOG_CLEANUP_DISABLED on error)
+ */
+log_cleanup_policy_t log_cleanup_policy_from_string(const char *str);
 
 #endif
