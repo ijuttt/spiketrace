@@ -21,8 +21,6 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
 #include <getopt.h>
 
 /* Maximum context snapshots (must match ring buffer capacity) */
