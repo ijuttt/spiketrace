@@ -332,7 +332,7 @@ spkt_status_t log_manager_delete_manual(log_manager_ctx_t *ctx,
   log_file_info_t *files =
       malloc(LOG_MANAGER_MAX_FILES * sizeof(log_file_info_t));
   if (!files) {
-    return SPKT_ERR_NULL_POINTER;
+    return SPKT_ERR_OUT_OF_MEMORY;
   }
 
   size_t file_count = 0;
@@ -419,7 +419,7 @@ spkt_status_t log_manager_run_cleanup(log_manager_ctx_t *ctx,
   log_file_info_t *files =
       malloc(LOG_MANAGER_MAX_FILES * sizeof(log_file_info_t));
   if (!files) {
-    return SPKT_ERR_NULL_POINTER;
+    return SPKT_ERR_OUT_OF_MEMORY;
   }
 
   size_t file_count = 0;
@@ -475,7 +475,7 @@ spkt_status_t log_manager_get_stats(log_manager_ctx_t *ctx,
   log_file_info_t *files =
       malloc(LOG_MANAGER_MAX_FILES * sizeof(log_file_info_t));
   if (!files) {
-    return SPKT_ERR_NULL_POINTER;
+    return SPKT_ERR_OUT_OF_MEMORY;
   }
 
   size_t file_count = 0;
