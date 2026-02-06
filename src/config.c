@@ -39,6 +39,14 @@
 /* Use header-defined default (supports build-time override via -DSPIKE_DUMP_DEFAULT_DIR) */
 #define DEFAULT_OUTPUT_DIRECTORY SPIKE_DUMP_DEFAULT_DIR
 
+/* ===== LOG MANAGEMENT DEFAULTS ===== */
+#define DEFAULT_ENABLE_AUTO_CLEANUP false
+#define DEFAULT_LOG_CLEANUP_POLICY LOG_CLEANUP_DISABLED
+#define DEFAULT_LOG_MAX_AGE_DAYS 30
+#define DEFAULT_LOG_MAX_COUNT 100
+#define DEFAULT_LOG_MAX_TOTAL_SIZE_MIB 512
+#define DEFAULT_CLEANUP_INTERVAL_MINUTES 60
+
 /* ===== VALIDATION BOUNDS ===== */
 
 #define MIN_CPU_DELTA_THRESHOLD_PCT 0.1
@@ -68,6 +76,16 @@
 #define MIN_JSON_BUFFER_SIZE_KIB 16
 #define MAX_JSON_BUFFER_SIZE_KIB 1024
 
+/* Log management validation bounds */
+#define MIN_LOG_MAX_AGE_DAYS 1
+#define MAX_LOG_MAX_AGE_DAYS 365
+#define MIN_LOG_MAX_COUNT 1
+#define MAX_LOG_MAX_COUNT 10000
+#define MIN_LOG_MAX_TOTAL_SIZE_MIB 1
+#define MAX_LOG_MAX_TOTAL_SIZE_MIB (100 * 1024) /* 100 GiB */
+#define MIN_CLEANUP_INTERVAL_MINUTES 1
+#define MAX_CLEANUP_INTERVAL_MINUTES (24 * 60) /* 24 hours */
+
 /* ===== TOML PARSER STATE ===== */
 
 typedef enum {
@@ -77,7 +95,7 @@ typedef enum {
   TOML_TOK_INTEGER,
   TOML_TOK_FLOAT,
   TOML_TOK_BOOLEAN,
-  TOML_TOK_TABLE_START,  /* [section] */
+  TOML_TOK_TABLE_START, /* [section] */
   TOML_TOK_EQUAL,
   TOML_TOK_NEWLINE,
   TOML_TOK_EOF,
@@ -102,23 +120,15 @@ typedef struct {
 
 /* ===== TOML PARSER HELPERS ===== */
 
-static bool is_whitespace(char c) {
-  return c == ' ' || c == '\t' || c == '\r';
-}
+static bool is_whitespace(char c) { return c == ' ' || c == '\t' || c == '\r'; }
 
-static bool is_newline(char c) {
-  return c == '\n';
-}
+static bool is_newline(char c) { return c == '\n'; }
 
-static bool is_digit(char c) {
-  return c >= '0' && c <= '9';
-}
+static bool is_digit(char c) { return c >= '0' && c <= '9'; }
 
 static bool is_alpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
-
-
 
 static void skip_whitespace(toml_parser_t *p) {
   while (p->pos < p->len && is_whitespace(p->data[p->pos])) {
@@ -279,8 +289,8 @@ static bool parse_float(toml_parser_t *p) {
   num_buf[num_len] = '\0';
   char *endptr;
   p->float_val = strtod(num_buf, &endptr);
-  if (*endptr != '\0' && *endptr != '\n' && *endptr != ' ' &&
-      *endptr != '\t' && *endptr != '#') {
+  if (*endptr != '\0' && *endptr != '\n' && *endptr != ' ' && *endptr != '\t' &&
+      *endptr != '#') {
     return false;
   }
 
@@ -289,14 +299,12 @@ static bool parse_float(toml_parser_t *p) {
 
 /* Parse boolean */
 static bool parse_boolean(toml_parser_t *p) {
-  if (p->pos + 4 <= p->len &&
-      strncmp(&p->data[p->pos], "true", 4) == 0) {
+  if (p->pos + 4 <= p->len && strncmp(&p->data[p->pos], "true", 4) == 0) {
     p->pos += 4;
     p->bool_val = true;
     return true;
   }
-  if (p->pos + 5 <= p->len &&
-      strncmp(&p->data[p->pos], "false", 5) == 0) {
+  if (p->pos + 5 <= p->len && strncmp(&p->data[p->pos], "false", 5) == 0) {
     p->pos += 5;
     p->bool_val = false;
     return true;
@@ -398,7 +406,8 @@ static toml_token_type_t toml_next_token(toml_parser_t *p) {
 
 /* ===== CONFIG PARSING ===== */
 
-static void parse_table_header(toml_parser_t *p, char *section, size_t section_size) {
+static void parse_table_header(toml_parser_t *p, char *section,
+                               size_t section_size) {
   section[0] = '\0';
   if (p->token != TOML_TOK_TABLE_START) {
     return;
@@ -423,14 +432,14 @@ static void parse_table_header(toml_parser_t *p, char *section, size_t section_s
 }
 
 static bool parse_key_value(toml_parser_t *p, char *key, size_t key_size,
-                             char *section, size_t section_size) {
+                            char *section, size_t section_size) {
   key[0] = '\0';
   section[0] = '\0';
 
   if (p->token == TOML_TOK_TABLE_START) {
     parse_table_header(p, section, section_size);
     toml_next_token(p); /* Consume newline after table */
-    return false; /* Not a key-value pair */
+    return false;       /* Not a key-value pair */
   }
 
   if (p->token != TOML_TOK_KEY) {
@@ -550,6 +559,30 @@ static void apply_config_value(spkt_config_t *config, const char *section,
         config->trigger_scope = TRIGGER_SCOPE_SYSTEM;
       }
     }
+  } else if (strcmp(section, "log_management") == 0) {
+    if (strcmp(key, "enable_auto_cleanup") == 0 &&
+        p->token == TOML_TOK_BOOLEAN) {
+      config->enable_auto_cleanup = p->bool_val;
+    } else if (strcmp(key, "cleanup_policy") == 0 &&
+               p->token == TOML_TOK_STRING) {
+      config->cleanup_policy = log_cleanup_policy_from_string(p->str_buf);
+    } else if (strcmp(key, "log_max_age_days") == 0 &&
+               (p->token == TOML_TOK_INTEGER || p->token == TOML_TOK_FLOAT)) {
+      config->log_max_age_days =
+          (uint32_t)(p->token == TOML_TOK_INTEGER ? p->int_val : p->float_val);
+    } else if (strcmp(key, "log_max_count") == 0 &&
+               (p->token == TOML_TOK_INTEGER || p->token == TOML_TOK_FLOAT)) {
+      config->log_max_count =
+          (uint32_t)(p->token == TOML_TOK_INTEGER ? p->int_val : p->float_val);
+    } else if (strcmp(key, "log_max_total_size_mib") == 0 &&
+               (p->token == TOML_TOK_INTEGER || p->token == TOML_TOK_FLOAT)) {
+      config->log_max_total_size_mib =
+          (uint32_t)(p->token == TOML_TOK_INTEGER ? p->int_val : p->float_val);
+    } else if (strcmp(key, "cleanup_interval_minutes") == 0 &&
+               (p->token == TOML_TOK_INTEGER || p->token == TOML_TOK_FLOAT)) {
+      config->cleanup_interval_minutes =
+          (uint32_t)(p->token == TOML_TOK_INTEGER ? p->int_val : p->float_val);
+    }
   }
 }
 
@@ -609,6 +642,14 @@ void config_init_defaults(spkt_config_t *config) {
 
   config->trigger_scope = TRIGGER_SCOPE_PROCESS;
 
+  /* Log management defaults */
+  config->enable_auto_cleanup = DEFAULT_ENABLE_AUTO_CLEANUP;
+  config->cleanup_policy = DEFAULT_LOG_CLEANUP_POLICY;
+  config->log_max_age_days = DEFAULT_LOG_MAX_AGE_DAYS;
+  config->log_max_count = DEFAULT_LOG_MAX_COUNT;
+  config->log_max_total_size_mib = DEFAULT_LOG_MAX_TOTAL_SIZE_MIB;
+  config->cleanup_interval_minutes = DEFAULT_CLEANUP_INTERVAL_MINUTES;
+
   config->loaded = false;
 }
 
@@ -630,8 +671,8 @@ spkt_status_t config_get_default_path(char *path, size_t path_size) {
     return SPKT_ERR_INVALID_PARAM; /* Cannot determine home directory */
   }
 
-  int written = snprintf(path, path_size, "%s/.config/spiketrace/config.toml",
-                          home);
+  int written =
+      snprintf(path, path_size, "%s/.config/spiketrace/config.toml", home);
   if (written < 0 || (size_t)written >= path_size) {
     return SPKT_ERR_INVALID_PARAM;
   }
@@ -803,11 +844,11 @@ spkt_status_t config_validate(spkt_config_t *config) {
 
   if (config->new_process_threshold_pct < MIN_NEW_PROCESS_THRESHOLD_PCT ||
       config->new_process_threshold_pct > MAX_NEW_PROCESS_THRESHOLD_PCT) {
-    fprintf(stderr,
-            "config: new_process_threshold_pct out of range (%.1f), clamping to "
-            "%.1f\n",
-            config->new_process_threshold_pct,
-            DEFAULT_NEW_PROCESS_THRESHOLD_PCT);
+    fprintf(
+        stderr,
+        "config: new_process_threshold_pct out of range (%.1f), clamping to "
+        "%.1f\n",
+        config->new_process_threshold_pct, DEFAULT_NEW_PROCESS_THRESHOLD_PCT);
     config->new_process_threshold_pct = DEFAULT_NEW_PROCESS_THRESHOLD_PCT;
     had_warnings = true;
   }
@@ -853,11 +894,11 @@ spkt_status_t config_validate(spkt_config_t *config) {
   /* Validate sampling configuration */
   if (config->sampling_interval_seconds < MIN_SAMPLING_INTERVAL_SECONDS ||
       config->sampling_interval_seconds > MAX_SAMPLING_INTERVAL_SECONDS) {
-    fprintf(stderr,
-            "config: sampling_interval_seconds out of range (%.1f), clamping to "
-            "%.1f\n",
-            config->sampling_interval_seconds,
-            DEFAULT_SAMPLING_INTERVAL_SECONDS);
+    fprintf(
+        stderr,
+        "config: sampling_interval_seconds out of range (%.1f), clamping to "
+        "%.1f\n",
+        config->sampling_interval_seconds, DEFAULT_SAMPLING_INTERVAL_SECONDS);
     config->sampling_interval_seconds = DEFAULT_SAMPLING_INTERVAL_SECONDS;
     had_warnings = true;
   }
@@ -926,8 +967,9 @@ spkt_status_t config_validate(spkt_config_t *config) {
   /* Validate output directory */
   if (strlen(config->output_directory) > 0) {
     if (!is_safe_absolute_path(config->output_directory)) {
-      fprintf(stderr,
-              "config: output_directory must be absolute path, using default\n");
+      fprintf(
+          stderr,
+          "config: output_directory must be absolute path, using default\n");
       strncpy(config->output_directory, DEFAULT_OUTPUT_DIRECTORY,
               sizeof(config->output_directory) - 1);
       config->output_directory[sizeof(config->output_directory) - 1] = '\0';
@@ -938,8 +980,9 @@ spkt_status_t config_validate(spkt_config_t *config) {
   /* Validate feature toggles - at least one must be enabled */
   if (!config->enable_cpu_detection && !config->enable_memory_detection &&
       !config->enable_swap_detection) {
-    fprintf(stderr,
-            "config: at least one detection type must be enabled, enabling all\n");
+    fprintf(
+        stderr,
+        "config: at least one detection type must be enabled, enabling all\n");
     config->enable_cpu_detection = true;
     config->enable_memory_detection = true;
     config->enable_swap_detection = true;
@@ -967,10 +1010,49 @@ spkt_status_t config_validate(spkt_config_t *config) {
     had_warnings = true;
   }
 
+  /* Validate log management settings */
+  if (config->log_max_age_days < MIN_LOG_MAX_AGE_DAYS ||
+      config->log_max_age_days > MAX_LOG_MAX_AGE_DAYS) {
+    fprintf(stderr,
+            "config: log_max_age_days out of range (%u), clamping to %u\n",
+            config->log_max_age_days, DEFAULT_LOG_MAX_AGE_DAYS);
+    config->log_max_age_days = DEFAULT_LOG_MAX_AGE_DAYS;
+    had_warnings = true;
+  }
+
+  if (config->log_max_count < MIN_LOG_MAX_COUNT ||
+      config->log_max_count > MAX_LOG_MAX_COUNT) {
+    fprintf(stderr, "config: log_max_count out of range (%u), clamping to %u\n",
+            config->log_max_count, DEFAULT_LOG_MAX_COUNT);
+    config->log_max_count = DEFAULT_LOG_MAX_COUNT;
+    had_warnings = true;
+  }
+
+  if (config->log_max_total_size_mib < MIN_LOG_MAX_TOTAL_SIZE_MIB ||
+      config->log_max_total_size_mib > MAX_LOG_MAX_TOTAL_SIZE_MIB) {
+    fprintf(
+        stderr,
+        "config: log_max_total_size_mib out of range (%u), clamping to %u\n",
+        config->log_max_total_size_mib, DEFAULT_LOG_MAX_TOTAL_SIZE_MIB);
+    config->log_max_total_size_mib = DEFAULT_LOG_MAX_TOTAL_SIZE_MIB;
+    had_warnings = true;
+  }
+
+  if (config->cleanup_interval_minutes < MIN_CLEANUP_INTERVAL_MINUTES ||
+      config->cleanup_interval_minutes > MAX_CLEANUP_INTERVAL_MINUTES) {
+    fprintf(
+        stderr,
+        "config: cleanup_interval_minutes out of range (%u), clamping to %u\n",
+        config->cleanup_interval_minutes, DEFAULT_CLEANUP_INTERVAL_MINUTES);
+    config->cleanup_interval_minutes = DEFAULT_CLEANUP_INTERVAL_MINUTES;
+    had_warnings = true;
+  }
+
   /* Validate numeric values are finite */
   if (config->cpu_delta_threshold_pct != config->cpu_delta_threshold_pct ||
       config->new_process_threshold_pct != config->new_process_threshold_pct ||
-      config->mem_pressure_threshold_pct != config->mem_pressure_threshold_pct ||
+      config->mem_pressure_threshold_pct !=
+          config->mem_pressure_threshold_pct ||
       config->cooldown_seconds != config->cooldown_seconds ||
       config->sampling_interval_seconds != config->sampling_interval_seconds ||
       config->memory_baseline_alpha != config->memory_baseline_alpha ||
@@ -980,5 +1062,39 @@ spkt_status_t config_validate(spkt_config_t *config) {
     return SPKT_ERR_INVALID_PARAM;
   }
 
-  return had_warnings ? SPKT_OK : SPKT_OK;
+  (void)had_warnings; /* Used during debugging, suppress unused warning */
+  return SPKT_OK;
+}
+
+/* ===== LOG CLEANUP POLICY HELPERS ===== */
+
+const char *log_cleanup_policy_to_string(log_cleanup_policy_t policy) {
+  switch (policy) {
+  case LOG_CLEANUP_DISABLED:
+    return "disabled";
+  case LOG_CLEANUP_BY_AGE:
+    return "by_age";
+  case LOG_CLEANUP_BY_COUNT:
+    return "by_count";
+  case LOG_CLEANUP_BY_SIZE:
+    return "by_size";
+  default:
+    return "disabled";
+  }
+}
+
+log_cleanup_policy_t log_cleanup_policy_from_string(const char *str) {
+  if (!str) {
+    return LOG_CLEANUP_DISABLED;
+  }
+  if (strcmp(str, "by_age") == 0) {
+    return LOG_CLEANUP_BY_AGE;
+  }
+  if (strcmp(str, "by_count") == 0) {
+    return LOG_CLEANUP_BY_COUNT;
+  }
+  if (strcmp(str, "by_size") == 0) {
+    return LOG_CLEANUP_BY_SIZE;
+  }
+  return LOG_CLEANUP_DISABLED;
 }

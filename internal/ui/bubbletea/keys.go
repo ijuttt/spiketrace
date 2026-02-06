@@ -24,12 +24,15 @@ type KeyMap struct {
 
 	// Application
 	Quit   key.Binding
-	Help   key.Binding
 	Reload key.Binding
 
 	// Snapshot navigation
 	NextSnapshot key.Binding
 	PrevSnapshot key.Binding
+
+	// File operations
+	Delete    key.Binding
+	DeleteAll key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -67,10 +70,6 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
 		),
-		Help: key.NewBinding(
-			key.WithKeys("?"),
-			key.WithHelp("?", "help"),
-		),
 		Reload: key.NewBinding(
 			key.WithKeys("r"),
 			key.WithHelp("r", "reload"),
@@ -83,12 +82,20 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("p", "["),
 			key.WithHelp("p/[", "prev snapshot"),
 		),
+		Delete: key.NewBinding(
+			key.WithKeys("d"),
+			key.WithHelp("d", "delete file"),
+		),
+		DeleteAll: key.NewBinding(
+			key.WithKeys("D"),
+			key.WithHelp("D", "delete all"),
+		),
 	}
 }
 
 // ShortHelp returns abbreviated help.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Enter, k.Help, k.Quit}
+	return []key.Binding{k.Tab, k.Enter, k.Delete, k.Quit}
 }
 
 // FullHelp returns complete help.
@@ -97,6 +104,6 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Left, k.Right},
 		{k.Enter, k.Tab, k.Escape},
 		{k.NextSnapshot, k.PrevSnapshot},
-		{k.Reload, k.Help, k.Quit},
+		{k.Reload, k.Delete, k.DeleteAll, k.Quit},
 	}
 }

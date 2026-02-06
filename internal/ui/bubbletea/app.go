@@ -6,6 +6,7 @@ package bubbletea
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -35,9 +36,10 @@ const (
 // App is the main application model.
 type App struct {
 	// Components
-	explorer components.Explorer
-	trigger  components.Trigger
-	viewer   components.Viewer
+	explorer      components.Explorer
+	trigger       components.Trigger
+	viewer        components.Viewer
+	confirmDialog components.ConfirmDialog
 
 	// State
 	activePanel int
@@ -57,12 +59,13 @@ type App struct {
 // NewApp creates a new application instance.
 func NewApp() App {
 	return App{
-		explorer:    components.NewExplorer(),
-		trigger:     components.NewTrigger(),
-		viewer:      components.NewViewer(),
-		activePanel: PanelExplorer,
-		keys:        DefaultKeyMap(),
-		statusMsg:   "Loading files...",
+		explorer:      components.NewExplorer(),
+		trigger:       components.NewTrigger(),
+		viewer:        components.NewViewer(),
+		confirmDialog: components.NewConfirmDialog(),
+		activePanel:   PanelExplorer,
+		keys:          DefaultKeyMap(),
+		statusMsg:     "Loading files...",
 	}
 }
 
@@ -75,10 +78,34 @@ func (a App) Init() tea.Cmd {
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Handle confirmation dialog first if visible
+	if a.confirmDialog.IsVisible() {
+		if result, handled := a.confirmDialog.Update(msg); handled {
+			if result.Confirmed {
+				switch result.Action {
+				case components.ConfirmDeleteSingle:
+					a.statusMsg = "Deleting file..."
+					return a, processor.DeleteDumpCmd(result.Data)
+				case components.ConfirmDeleteAll:
+					a.statusMsg = "Deleting all files..."
+					return a, processor.DeleteAllDumpsCmd(
+						config.GetDataPaths(),
+						config.DumpFileExtension,
+					)
+				}
+			} else {
+				a.statusMsg = "Deletion cancelled"
+			}
+			return a, nil
+		}
+		return a, nil // Block other input while dialog is visible
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+		a.confirmDialog.SetSize(msg.Width, msg.Height)
 		a.updateComponentSizes()
 
 	case tea.KeyMsg:
@@ -103,6 +130,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.statusMsg = "Loading file..."
 					cmds = append(cmds, processor.LoadDumpCmd(path))
 				}
+			}
+
+		case key.Matches(msg, a.keys.Delete):
+			// Delete selected file (with confirmation)
+			if a.activePanel == PanelExplorer {
+				selected := a.explorer.Selected()
+				if selected != "" {
+					filename := filepath.Base(selected)
+					a.confirmDialog.Show(
+						components.ConfirmDeleteSingle,
+						fmt.Sprintf("Delete file '%s'?", filename),
+						selected,
+					)
+				}
+			}
+
+		case key.Matches(msg, a.keys.DeleteAll):
+			// Delete all files (with confirmation)
+			if a.activePanel == PanelExplorer && a.explorer.FileCount() > 0 {
+				a.confirmDialog.Show(
+					components.ConfirmDeleteAll,
+					fmt.Sprintf("Delete ALL %d log files?", a.explorer.FileCount()),
+					"",
+				)
 			}
 
 		default:
@@ -149,6 +200,42 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMsg = fmt.Sprintf("✓ Loaded: %d snapshots", len(msg.Dump.Snapshots))
 			a.errMsg = ""
 		}
+
+	case processor.DeleteResultMsg:
+		if msg.Success {
+			a.statusMsg = fmt.Sprintf("✓ File deleted: %s", filepath.Base(msg.Path))
+			a.errMsg = ""
+			// Clear current file if it was deleted
+			if a.currentFile == msg.Path {
+				a.currentFile = ""
+				a.trigger.SetDump(nil)
+				a.viewer.SetState(nil, 0)
+			}
+			// Refresh file list
+			return a, processor.RefreshFilesCmd(
+				config.GetDataPaths(),
+				config.DumpFileExtension,
+			)
+		} else {
+			a.errMsg = msg.Err.Error()
+			a.statusMsg = "Failed to delete file"
+		}
+
+	case processor.DeleteAllResultMsg:
+		a.currentFile = ""
+		a.trigger.SetDump(nil)
+		a.viewer.SetState(nil, 0)
+		if msg.FailedCount > 0 {
+			a.statusMsg = fmt.Sprintf("Deleted %d files, %d failed", msg.DeletedCount, msg.FailedCount)
+		} else {
+			a.statusMsg = fmt.Sprintf("✓ All %d files deleted", msg.DeletedCount)
+		}
+		a.errMsg = ""
+		// Refresh file list
+		return a, processor.RefreshFilesCmd(
+			config.GetDataPaths(),
+			config.DumpFileExtension,
+		)
 	}
 
 	return a, tea.Batch(cmds...)
@@ -180,6 +267,11 @@ func (a App) View() string {
 	// Status bar
 	statusBar := a.renderStatusBar()
 	b.WriteString(statusBar)
+
+	// Overlay confirmation dialog if visible
+	if a.confirmDialog.IsVisible() {
+		return a.confirmDialog.View()
+	}
 
 	return b.String()
 }
@@ -232,6 +324,9 @@ func (a App) renderStatusBar() string {
 		styles.HelpKeyStyle.Render("Enter") + styles.HelpDescStyle.Render(":load"),
 		styles.HelpKeyStyle.Render("h/l") + styles.HelpDescStyle.Render(":snap"),
 		styles.HelpKeyStyle.Render("m") + styles.HelpDescStyle.Render(":mem"),
+		styles.HelpKeyStyle.Render("d") + styles.HelpDescStyle.Render(":del"),
+		styles.HelpKeyStyle.Render("D") + styles.HelpDescStyle.Render(":delAll"),
+		styles.HelpKeyStyle.Render("r") + styles.HelpDescStyle.Render(":refresh"),
 		styles.HelpKeyStyle.Render("q") + styles.HelpDescStyle.Render(":quit"),
 	}
 	right = strings.Join(hints, "  ")

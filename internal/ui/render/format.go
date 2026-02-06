@@ -88,6 +88,14 @@ func Memory(m *model.MemSnapshot) string {
 			Yellow, m.GetDirtyMiB(), Reset, m.GetSlabMiB(), m.GetShmemMiB())
 	}
 
+	// Extended breakdown (schema v2) - show if any field is non-zero
+	if m.ActiveKiB > 0 || m.InactiveKiB > 0 || m.DirtyKiB > 0 || m.SlabKiB > 0 || m.ShmemKiB > 0 {
+		s += fmt.Sprintf("Active: %d MiB  Inactive: %d MiB\n",
+			m.ActiveKiB/1024, m.InactiveKiB/1024)
+		s += fmt.Sprintf("Dirty: %s%d MiB%s  Slab: %d MiB  Shmem: %d MiB\n",
+			Yellow, m.DirtyKiB/1024, Reset, m.SlabKiB/1024, m.ShmemKiB/1024)
+	}
+
 	return s
 }
 

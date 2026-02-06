@@ -55,3 +55,28 @@ aggregate_related_processes = false
 # EMA smoothing factors (lower = more stable baseline)
 memory_baseline_alpha = 0.2           # default: 0.2, range: 0.01-0.9
 process_baseline_alpha = 0.3          # default: 0.3, range: 0.01-0.9
+
+[log_management]
+# Enable automatic log cleanup (deletes old spike_*.json files)
+enable_auto_cleanup = false           # default: false
+
+# Cleanup policy determines which files to delete:
+#   "disabled"  - No automatic cleanup (manual only)
+#   "by_age"    - Delete files older than log_max_age_days
+#   "by_count"  - Keep only log_max_count most recent files
+#   "by_size"   - Delete oldest files when total exceeds log_max_total_size_mib
+cleanup_policy = "disabled"           # default: disabled
+
+# For by_age policy: delete logs older than N days
+log_max_age_days = 30                 # default: 30, range: 1-365
+
+# For by_count policy: keep only N most recent log files
+log_max_count = 100                   # default: 100, range: 1-10000
+
+# For by_size policy: delete oldest when total log size exceeds N MiB
+log_max_total_size_mib = 512          # default: 512, range: 1-102400
+
+# How often to check for cleanup (minutes)
+# Lower values = more frequent checks but slightly more CPU overhead
+cleanup_interval_minutes = 60         # default: 60, range: 1-1440
+

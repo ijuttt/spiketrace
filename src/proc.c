@@ -25,7 +25,7 @@ static long get_page_size(void) {
   if (page_size_bytes == 0) {
     page_size_bytes = sysconf(_SC_PAGESIZE);
     if (page_size_bytes <= 0) {
-      page_size_bytes = 4096; // fallback
+      page_size_bytes = 4096; /* fallback */
     }
   }
   return page_size_bytes;
@@ -59,7 +59,7 @@ static int parse_proc_stat(int pid, unsigned long long *out_ticks,
   }
   fclose(fp);
 
-  // Find comm field (enclosed in parentheses)
+  /* Find comm field (enclosed in parentheses) */
   char *comm_start = strchr(buf, '(');
   char *comm_end = strrchr(buf, ')');
 
@@ -75,20 +75,20 @@ static int parse_proc_stat(int pid, unsigned long long *out_ticks,
   strncpy(out_comm, comm_start + 1, comm_len);
   out_comm[comm_len] = '\0';
 
-  // Parse fields after comm: state is field 3, ppid is 4, pgrp is 5
-  // utime is 14, stime is 15
-  char *fields_start = comm_end + 2; // skip ") "
+  /* Parse fields after comm: state is field 3, ppid is 4, pgrp is 5
+  utime is 14, stime is 15 */
+  char *fields_start = comm_end + 2; /* skip ") " */
 
   unsigned long utime = 0, stime = 0;
   int ppid_raw = 0, pgid_raw = 0;
 
   int scanned = sscanf(
       fields_start,
-      "%*c "             // 3: state
-      "%d %d "           // 4-5: ppid, pgrp
-      "%*d %*d %*d "     // 6-8: session, tty, tpgid
-      "%*u %*u %*u %*u %*u " // 9-13: flags, minflt, cminflt, majflt, cmajflt
-      "%lu %lu",         // 14-15: utime, stime
+      "%*c "             /* 3: state */
+      "%d %d "           /* 4-5: ppid, pgrp */
+      "%*d %*d %*d "     /* 6-8: session, tty, tpgid */
+      "%*u %*u %*u %*u %*u " /* 9-13: flags, minflt, cminflt, majflt, cmajflt */
+      "%lu %lu",         /* 14-15: utime, stime */
       &ppid_raw, &pgid_raw, &utime, &stime);
 
   if (scanned != 4) {

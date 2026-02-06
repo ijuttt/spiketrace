@@ -5,6 +5,7 @@
 
 #include "anomaly_detector.h"
 #include "config.h"
+#include "log_manager.h"
 #include "proc.h"
 #include "ringbuf.h"
 #include "snapshot.h"
@@ -16,10 +17,10 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <string.h>
-#include <stdlib.h>
 #include <getopt.h>
 
 /* Maximum context snapshots (must match ring buffer capacity) */
@@ -88,7 +89,8 @@ static void reload_config(void) {
   spkt_config_t new_config;
   spkt_status_t s = load_config(&new_config);
   if (s != SPKT_OK) {
-    fprintf(stderr, "spiketrace: config reload failed, keeping current config\n");
+    fprintf(stderr,
+            "spiketrace: config reload failed, keeping current config\n");
     return;
   }
 
@@ -105,7 +107,8 @@ static anomaly_config_t config_to_anomaly_config(const spkt_config_t *config) {
   anomaly_config.cpu_delta_threshold_pct = config->cpu_delta_threshold_pct;
   anomaly_config.new_process_threshold_pct = config->new_process_threshold_pct;
   anomaly_config.mem_drop_threshold_kib = config->mem_drop_threshold_kib;
-  anomaly_config.mem_pressure_threshold_pct = config->mem_pressure_threshold_pct;
+  anomaly_config.mem_pressure_threshold_pct =
+      config->mem_pressure_threshold_pct;
   anomaly_config.swap_spike_threshold_kib = config->swap_spike_threshold_kib;
   anomaly_config.cooldown_ns =
       (uint64_t)(config->cooldown_seconds * 1000000000.0);
@@ -197,7 +200,7 @@ int main(int argc, char *argv[]) {
   /* Set process baseline alpha from config */
   pthread_mutex_lock(&config_mutex);
   snapshot_builder_set_baseline_alpha(&builder,
-                                     active_config.process_baseline_alpha);
+                                      active_config.process_baseline_alpha);
   snapshot_builder_set_top_processes_limit(&builder,
                                            active_config.top_processes_stored);
   pthread_mutex_unlock(&config_mutex);
@@ -227,10 +230,26 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "spiketrace: spike dumps disabled (init failed)\n");
   }
 
+  /* Initialize log manager for automatic cleanup */
+  log_manager_ctx_t log_ctx;
+  bool log_manager_enabled = false;
+  pthread_mutex_lock(&config_mutex);
+  if (strlen(active_config.output_directory) > 0) {
+    log_manager_enabled =
+        (log_manager_init(&log_ctx, active_config.output_directory) == SPKT_OK);
+  }
+  pthread_mutex_unlock(&config_mutex);
+
+  if (log_manager_enabled && active_config.enable_auto_cleanup) {
+    fprintf(stderr, "spiketrace: log manager enabled (policy: %s)\n",
+            log_cleanup_policy_to_string(active_config.cleanup_policy));
+  }
+
   fprintf(stderr, "spiketrace: started (pid=%d)\n", getpid());
 
   /* Allocate buffer for context snapshots (max size) */
-  spkt_snapshot_t *dump_snaps = malloc(MAX_CONTEXT_SNAPSHOTS * sizeof(spkt_snapshot_t));
+  spkt_snapshot_t *dump_snaps =
+      malloc(MAX_CONTEXT_SNAPSHOTS * sizeof(spkt_snapshot_t));
   if (!dump_snaps) {
     fprintf(stderr, "spiketrace: out of memory\n");
     if (dumps_enabled) {
@@ -251,9 +270,9 @@ int main(int argc, char *argv[]) {
       /* Update process baseline alpha */
       pthread_mutex_lock(&config_mutex);
       snapshot_builder_set_baseline_alpha(&builder,
-                                         active_config.process_baseline_alpha);
-      snapshot_builder_set_top_processes_limit(&builder,
-                                              active_config.top_processes_stored);
+                                          active_config.process_baseline_alpha);
+      snapshot_builder_set_top_processes_limit(
+          &builder, active_config.top_processes_stored);
       pthread_mutex_unlock(&config_mutex);
     }
 
@@ -274,7 +293,8 @@ int main(int argc, char *argv[]) {
       /* Sub-second sleep using nanosleep */
       struct timespec ts;
       ts.tv_sec = (time_t)sampling_interval;
-      ts.tv_nsec = (long)((sampling_interval - (double)ts.tv_sec) * 1000000000.0);
+      ts.tv_nsec =
+          (long)((sampling_interval - (double)ts.tv_sec) * 1000000000.0);
       nanosleep(&ts, NULL);
     }
 
@@ -305,14 +325,12 @@ int main(int argc, char *argv[]) {
       /* Filter by enabled detection types */
       if (result.has_anomaly) {
         bool should_report = false;
-        if (enable_cpu &&
-            (result.type == ANOMALY_TYPE_CPU_DELTA ||
-             result.type == ANOMALY_TYPE_CPU_NEW_PROC)) {
+        if (enable_cpu && (result.type == ANOMALY_TYPE_CPU_DELTA ||
+                           result.type == ANOMALY_TYPE_CPU_NEW_PROC)) {
           should_report = true;
         }
-        if (enable_memory &&
-            (result.type == ANOMALY_TYPE_MEM_DROP ||
-             result.type == ANOMALY_TYPE_MEM_PRESSURE)) {
+        if (enable_memory && (result.type == ANOMALY_TYPE_MEM_DROP ||
+                              result.type == ANOMALY_TYPE_MEM_PRESSURE)) {
           should_report = true;
         }
         if (enable_swap && result.type == ANOMALY_TYPE_SWAP_SPIKE) {
@@ -404,11 +422,24 @@ int main(int argc, char *argv[]) {
         }
       }
     }
+
+    /* Run automatic log cleanup if enabled */
+    if (log_manager_enabled) {
+      size_t deleted = 0;
+      pthread_mutex_lock(&config_mutex);
+      log_manager_auto_cleanup(&log_ctx, &active_config,
+                               snap.timestamp_monotonic_ns, &deleted);
+      pthread_mutex_unlock(&config_mutex);
+      /* Note: deleted count logged by log_manager if > 0 */
+    }
   }
 
   fprintf(stderr, "spiketrace: shutting down\n");
 
   free(dump_snaps);
+  if (log_manager_enabled) {
+    log_manager_cleanup(&log_ctx);
+  }
   if (dumps_enabled) {
     spike_dump_cleanup(&dump_ctx);
   }

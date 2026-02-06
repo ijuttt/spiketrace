@@ -25,15 +25,15 @@ spkt_status_t snapshot_builder_init(snapshot_builder_t *builder,
   memset(builder, 0, sizeof(*builder));
 
   builder->num_cores = num_cores;
-  builder->max_cores = num_cores + 1; // index 0 = total
+  builder->max_cores = num_cores + 1; /* index 0 = total */
 
-  // Initialize proc context
+  /* Initialize proc context */
   spkt_status_t status = proc_context_init(&builder->proc_ctx);
   if (status != SPKT_OK) {
     return status;
   }
 
-  // Initial CPU jiffies read (baseline)
+  /* Initial CPU jiffies read (baseline) */
   status = cpu_read_jiffies(builder->prev_jiffies, builder->max_cores);
   if (status != SPKT_OK) {
     proc_context_cleanup(&builder->proc_ctx);
@@ -49,10 +49,10 @@ spkt_status_t snapshot_builder_collect(snapshot_builder_t *builder,
     return SPKT_ERR_NULL_POINTER;
   }
 
-  // Always zero snapshot first
+  /* Always zero snapshot first */
   memset(out, 0, sizeof(*out));
 
-  // Always set timestamp
+  /* Always set timestamp */
   out->timestamp_monotonic_ns = spkt_get_monotonic_ns();
 
   if (cpu_read_jiffies(builder->curr_jiffies, builder->max_cores) == SPKT_OK) {
@@ -68,7 +68,7 @@ spkt_status_t snapshot_builder_collect(snapshot_builder_t *builder,
     out->cpu.valid_core_count = builder->num_cores;
     out->cpu.global_usage_pct = sum / builder->num_cores;
 
-    // Update baseline for next delta
+    /* Update baseline for next delta */
     memcpy(builder->prev_jiffies, builder->curr_jiffies,
            sizeof(builder->prev_jiffies));
   }
