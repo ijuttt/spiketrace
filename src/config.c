@@ -1062,7 +1062,8 @@ spkt_status_t config_validate(spkt_config_t *config) {
     return SPKT_ERR_INVALID_PARAM;
   }
 
-  return had_warnings ? SPKT_OK : SPKT_OK;
+  (void)had_warnings; /* Used during debugging, suppress unused warning */
+  return SPKT_OK;
 }
 
 /* ===== LOG CLEANUP POLICY HELPERS ===== */
