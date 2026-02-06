@@ -9,6 +9,7 @@
 #include "spkt_common.h"
 
 #include <stddef.h>
+#include <sys/types.h>
 
 /*
  * Spike dump module: orchestrates persistence of spike snapshots to JSON.
@@ -21,15 +22,22 @@
 /* Maximum snapshots to include in a dump (pre-spike context + current) */
 #define SPIKE_DUMP_MAX_SNAPSHOTS 10
 
-/* Default output directory */
+/* Default output directory
+ * Can be overridden at build time via -DSPIKE_DUMP_DEFAULT_DIR=\"...\" */
+#ifndef SPIKE_DUMP_DEFAULT_DIR
 #define SPIKE_DUMP_DEFAULT_DIR "/var/lib/spiketrace"
+#endif
 
 /* Maximum path length for dump files */
 #define SPIKE_DUMP_PATH_MAX 256
 
+/* Group name for dump file ownership */
+#define SPIKE_DUMP_GROUP "spiketrace"
+
 typedef struct {
   char output_dir[SPIKE_DUMP_PATH_MAX];
   uint64_t dump_count; /* Number of dumps written (for unique filenames) */
+  gid_t spike_gid;     /* GID for 'spiketrace' group (0 if not found) */
 } spike_dump_ctx_t;
 
 /* Initialize dump context with output directory.

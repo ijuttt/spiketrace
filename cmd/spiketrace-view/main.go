@@ -10,8 +10,8 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/jegesmk/spiketrace/internal/config"
-	"github.com/jegesmk/spiketrace/internal/ui/bubbletea"
+	"github.com/ijuttt/spiketrace/internal/config"
+	"github.com/ijuttt/spiketrace/internal/ui/bubbletea"
 )
 
 func main() {

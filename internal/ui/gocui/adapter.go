@@ -5,8 +5,8 @@
 package gocui
 
 import (
-	"github.com/jegesmk/spiketrace/internal/app"
-	"github.com/jegesmk/spiketrace/internal/ui/render"
+	"github.com/ijuttt/spiketrace/internal/app"
+	"github.com/ijuttt/spiketrace/internal/ui/render"
 	lib "github.com/jroimartin/gocui"
 )
 

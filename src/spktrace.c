@@ -20,9 +20,13 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <getopt.h>
 
 /* Maximum context snapshots (must match ring buffer capacity) */
 #define MAX_CONTEXT_SNAPSHOTS 60
+
+/* Version string for --version flag */
+#define SPIKETRACE_VERSION "0.1.0"
 
 /* Shutdown flag set by signal handler */
 static volatile sig_atomic_t shutdown_requested = 0;
@@ -131,7 +135,42 @@ static void format_scope_context(char *buf, size_t buf_size,
   }
 }
 
-int main(void) {
+static void print_version(void) {
+  printf("spiketrace %s\n", SPIKETRACE_VERSION);
+}
+
+static void print_help(void) {
+  printf("Usage: spiketrace [OPTIONS]\n\n");
+  printf("System resource spike detection daemon.\n\n");
+  printf("Options:\n");
+  printf("  -h, --help     Show this help message\n");
+  printf("  -v, --version  Show version information\n");
+  printf("\nConfiguration: %s\n", CONFIG_SYSTEM_PATH);
+  printf("Output: %s/\n", SPIKE_DUMP_DEFAULT_DIR);
+}
+
+int main(int argc, char *argv[]) {
+  static struct option long_options[] = {
+    {"help", no_argument, 0, 'h'},
+    {"version", no_argument, 0, 'v'},
+    {0, 0, 0, 0}
+  };
+
+  int opt;
+  while ((opt = getopt_long(argc, argv, "hv", long_options, NULL)) != -1) {
+    switch (opt) {
+    case 'h':
+      print_help();
+      return 0;
+    case 'v':
+      print_version();
+      return 0;
+    default:
+      print_help();
+      return 1;
+    }
+  }
+
   int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
   if (num_cores <= 0 || num_cores > MAX_CORES) {
     fprintf(stderr, "spiketrace: invalid core count\n");

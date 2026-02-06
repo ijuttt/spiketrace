@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jegesmk/spiketrace/internal/model"
-	"github.com/jegesmk/spiketrace/internal/ui/styles"
+	"github.com/ijuttt/spiketrace/internal/model"
+	"github.com/ijuttt/spiketrace/internal/ui/styles"
 )
 
 // -----------------------------------------------------------------------------

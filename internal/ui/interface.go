@@ -4,7 +4,7 @@
 // Package ui defines the UI interface for the spiketrace viewer.
 package ui
 
-import "github.com/jegesmk/spiketrace/internal/app"
+import "github.com/ijuttt/spiketrace/internal/app"
 
 // UI abstracts the terminal UI implementation.
 // This allows swapping gocui for another TUI library without changing app logic.

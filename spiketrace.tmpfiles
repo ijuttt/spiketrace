@@ -1,3 +1,0 @@
-# spiketrace state directory
-# Created by systemd-tmpfiles on boot
-d /var/lib/spiketrace 0755 root root -

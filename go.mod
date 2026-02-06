@@ -1,4 +1,4 @@
-module github.com/jegesmk/spiketrace
+module github.com/ijuttt/spiketrace
 
 go 1.24.0
 

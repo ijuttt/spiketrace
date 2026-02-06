@@ -3,7 +3,7 @@
 
 package analysis
 
-import "github.com/jegesmk/spiketrace/internal/model"
+import "github.com/ijuttt/spiketrace/internal/model"
 
 // TimePoint represents a single point in a time-series.
 type TimePoint struct {

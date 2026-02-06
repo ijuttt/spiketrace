@@ -1,0 +1,63 @@
+# Pre-install: Create group BEFORE files are extracted
+# This ensures tmpfiles.d can use the group during first boot
+pre_install() {
+    if ! getent group spiketrace >/dev/null; then
+        groupadd -r spiketrace
+    fi
+}
+
+# Post-install: Fix ownership and notify user
+post_install() {
+    # Ensure state directory has correct ownership
+    if [ -d /var/lib/spiketrace ]; then
+        chown root:spiketrace /var/lib/spiketrace
+        chmod 0750 /var/lib/spiketrace
+    fi
+    
+    echo ":: spiketrace installed successfully"
+    echo ":: Start the service: sudo systemctl enable --now spiketrace"
+    echo ""
+    echo ":: To read spike dumps as non-root user:"
+    echo "   sudo usermod -aG spiketrace \$USER"
+    echo "   (logout and login for group to take effect)"
+}
+
+# Pre-upgrade: Preserve running state
+pre_upgrade() {
+    if systemctl is-active --quiet spiketrace; then
+        systemctl stop spiketrace 2>/dev/null || true
+        touch /tmp/.spiketrace-was-running
+    fi
+}
+
+# Post-upgrade: Reload systemd and restore service state
+post_upgrade() {
+    # Ensure group exists (in case upgrading from old version)
+    if ! getent group spiketrace >/dev/null; then
+        groupadd -r spiketrace
+    fi
+    
+    # Fix state directory ownership
+    if [ -d /var/lib/spiketrace ]; then
+        chown root:spiketrace /var/lib/spiketrace
+        chmod 0750 /var/lib/spiketrace
+    fi
+    
+    # Reload systemd
+    systemctl daemon-reload 2>/dev/null || true
+    
+    # Restart if it was running before upgrade
+    if [ -f /tmp/.spiketrace-was-running ]; then
+        rm -f /tmp/.spiketrace-was-running
+        systemctl start spiketrace 2>/dev/null || true
+    fi
+}
+
+# Post-remove: Cleanup
+post_remove() {
+    echo ":: Spike dumps preserved at /var/lib/spiketrace"
+    echo ":: To purge all data: sudo rm -rf /var/lib/spiketrace"
+    echo ""
+    echo ":: The 'spiketrace' group is preserved for data access."
+    echo ":: To remove: sudo groupdel spiketrace"
+}
