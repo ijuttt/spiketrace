@@ -224,7 +224,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case processor.DeleteAllResultMsg:
 		a.currentFile = ""
 		a.trigger.SetDump(nil)
-		a.viewer.SetSnapshot(nil)
+		a.viewer.SetState(nil, 0)
 		if msg.FailedCount > 0 {
 			a.statusMsg = fmt.Sprintf("Dihapus %d file, %d gagal", msg.DeletedCount, msg.FailedCount)
 		} else {

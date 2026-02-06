@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/jegesmk/spiketrace/internal/ui/styles"
+	"github.com/ijuttt/spiketrace/internal/ui/styles"
 )
 
 // -----------------------------------------------------------------------------

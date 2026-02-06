@@ -21,12 +21,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-<<<<<<< HEAD
 #include <string.h>
 #include <stdlib.h>
 #include <getopt.h>
-=======
->>>>>>> 5bb20ca (feat(core): implement automatic and manual log deletion logic)
 
 /* Maximum context snapshots (must match ring buffer capacity) */
 #define MAX_CONTEXT_SNAPSHOTS 60
@@ -381,12 +378,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,
                 "spiketrace: [ANOMALY] MEM PRESSURE%s: [%d] %s top RSS, %.1f%% "
                 "used (available: %lu MiB)\n",
-<<<<<<< HEAD
                 scope_ctx, result.spike_pid, result.spike_comm,
                 result.mem_used_pct,
-=======
-                result.spike_pid, result.spike_comm, result.mem_used_pct,
->>>>>>> 5bb20ca (feat(core): implement automatic and manual log deletion logic)
                 (unsigned long)(result.mem_available_kib / 1024));
         break;
       case ANOMALY_TYPE_SWAP_SPIKE:
