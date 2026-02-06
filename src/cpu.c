@@ -34,7 +34,7 @@ static spkt_status_t parse_cpu_line(const char *line, struct cpu_jiffies *out) {
 /* Extract core number from label like "cpu0", "cpu1" */
 static int parse_core_num(const char *label) {
   if (strcmp(label, CPU_PREFIX) == 0) {
-    return 0; // Total CPU
+    return 0; /* Total CPU */
   }
 
   if (!isdigit((unsigned char)label[3])) {
@@ -48,7 +48,7 @@ static int parse_core_num(const char *label) {
     return -1;
   }
 
-  return (int)core + 1; // Offset by 1 (index 0 = total)
+  return (int)core + 1; /* Offset by 1 (index 0 = total) */
 }
 
 spkt_status_t cpu_read_jiffies(struct cpu_jiffies *jiffies, int max_cores) {
@@ -65,7 +65,7 @@ spkt_status_t cpu_read_jiffies(struct cpu_jiffies *jiffies, int max_cores) {
   int parsed_count = 0;
 
   while (fgets(buf, sizeof(buf), fp)) {
-    // Stop when we hit non-cpu lines
+    /* Stop when we hit non-cpu lines */
     if (strncmp(buf, CPU_PREFIX, CPU_PREFIX_LEN) != 0) {
       break;
     }
@@ -114,7 +114,7 @@ spkt_status_t cpu_calc_usage_pct_batch(const struct cpu_jiffies *old_jiffies,
     return SPKT_ERR_INVALID_PARAM;
   }
 
-  // Process per-core stats (skip index 0 which is total)
+  /* Process per-core stats (skip index 0 which is total) */
   for (int i = 0; i < num_cores; i++) {
     const struct cpu_jiffies *new_j = &new_jiffies[i + 1];
     const struct cpu_jiffies *old_j = &old_jiffies[i + 1];
@@ -123,13 +123,13 @@ spkt_status_t cpu_calc_usage_pct_batch(const struct cpu_jiffies *old_jiffies,
         total_jiffies(new_j) - total_jiffies(old_j);
     unsigned long long idle_delta = idle_jiffies(new_j) - idle_jiffies(old_j);
 
-    // Handle edge cases
+    /* Handle edge cases */
     if (total_delta == 0) {
       out_usage[i] = 0.0;
       continue;
     }
 
-    // Sanity check: idle shouldn't exceed total
+    /* Sanity check: idle shouldn't exceed total */
     if (idle_delta > total_delta) {
       out_usage[i] = 0.0;
       continue;

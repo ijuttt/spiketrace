@@ -84,9 +84,9 @@ spkt_status_t ringbuf_get_recent(const ringbuffer_t *rb, spkt_snapshot_t *dest,
     return SPKT_OK;
   }
 
-  // Copy in reverse chronological order (newest first)
+  /* Copy in reverse chronological order (newest first) */
   for (size_t i = 0; i < count_to_copy; i++) {
-    // Calculate index: tail-1 is newest, tail-2 is second newest, etc.
+    /* Calculate index: tail-1 is newest, tail-2 is second newest, etc. */
     size_t idx =
         (rb->tail + SPKT_RINGBUF_CAPACITY - i - 1) % SPKT_RINGBUF_CAPACITY;
     dest[i] = rb->snapshots[idx];
