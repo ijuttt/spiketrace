@@ -2,6 +2,7 @@
 
 #include "log_manager.h"
 #include "time_utils.h"
+#include "fs_utils.h" /* [NEW] */
 
 #include <dirent.h>
 #include <errno.h>
@@ -274,6 +275,9 @@ spkt_status_t log_manager_init(log_manager_ctx_t *ctx, const char *log_dir) {
   if (len > 0 && ctx->log_directory[len - 1] == '/') {
     ctx->log_directory[len - 1] = '\0';
   }
+
+  /* Ensure directory exists */
+  spkt_mkdir_p(ctx->log_directory, 0755);
 
   /* Verify directory exists and is accessible */
   if (access(ctx->log_directory, R_OK | W_OK) != 0) {

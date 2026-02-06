@@ -6,6 +6,7 @@
 #include "spike_dump.h"
 #include "json_writer.h"
 #include "time_format.h"
+#include "fs_utils.h" /* [NEW] */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -717,6 +718,13 @@ spkt_status_t spike_dump_init(spike_dump_ctx_t *ctx, const char *dir) {
   /* Remove trailing slash if present */
   if (dir_len > 0 && ctx->output_dir[dir_len - 1] == '/') {
     ctx->output_dir[dir_len - 1] = '\0';
+  }
+
+  /* Ensure directory exists (recursive mkdir -p for robustness) */
+  spkt_status_t ms = spkt_mkdir_p(ctx->output_dir, 0755);
+  if (ms != SPKT_OK) {
+      /* Warn but continue to access check (might exist but have wrong perms) */
+      fprintf(stderr, "spike_dump: warning: failed to create directory '%s', attempting to continue...\n", ctx->output_dir);
   }
 
   /* Validate directory exists and is writable */

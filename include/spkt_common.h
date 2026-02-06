@@ -40,6 +40,11 @@ typedef enum {
   SPKT_ERR_LOG_DELETE_FAILED = -702,
   SPKT_ERR_LOG_PATTERN_INVALID = -703,
 
+  /* Filesystem errors */
+  SPKT_ERR_FS_CREATE = -800,
+  SPKT_ERR_FS_ACCESS = -801,
+  SPKT_ERR_FS_NOT_DIR = -802,
+
   /* Generic errors */
   SPKT_ERR_INVALID_PARAM = -1,
   SPKT_ERR_NULL_POINTER = -2,
