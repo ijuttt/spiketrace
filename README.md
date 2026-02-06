@@ -36,65 +36,67 @@ Lightweight C daemon for Linux capturing snapshots of short resource spikes for 
 4. **JSON Persistence**: Atomically writes 10 recent snapshots on trigger
 5. **Viewers**: Interactive TUI (Go) and legacy CLI (C) for inspecting dumps
 
-## Requirements
+## Installation
 
-- Linux (uses `/proc` filesystem)
-- GCC with C99 support + pthreads
-- Go 1.21+ (for the TUI viewer)
-
-## Build & Install
+### Arch Linux (AUR)
+A generic PKGBUILD is provided. If using an AUR helper:
 
 ```bash
-make                    # build all components (daemon, TUI, CLI)
-sudo make install       # install to /usr/local/bin
+yay -S spiketrace-git
 ```
 
-Installs:
-- `/usr/local/bin/spiketrace` — daemon
-- `/usr/local/bin/spiketrace-view` — interactive TUI viewer (default)
-- `/usr/local/bin/spiketrace-view-cli` — legacy CLI viewer
-- `/etc/systemd/system/spiketrace.service` — systemd unit (opt-in)
-- `/var/lib/spiketrace/` — output directory for JSON dumps
+### Manual Build
+**Requirements**: GCC (C99+), pthreads, Go 1.21+ (for TUI), make.
 
-## Running
+```bash
+git clone https://github.com/ijuttt/spiketrace.git
+cd spiketrace
+
+make                    # build all components
+sudo make install       # install to /usr/local
+```
+
+For a distro-compliant install (installing to `/usr` and including systemd units):
+```bash
+sudo make PREFIX=/usr install
+```
+
+## Running the Service
 
 ### Systemd (Recommended)
-
 ```bash
 sudo systemctl enable --now spiketrace   # enable and start
 sudo systemctl status spiketrace         # check status
 journalctl -u spiketrace -f              # view logs
 ```
 
-### Manual
+To reload configuration without restarting:
+```bash
+sudo systemctl reload spiketrace
+```
+
+### Manual Execution
+```bash
+sudo spiketrace
+```
+
+### ⚠️ Non-Root Access (Important)
+The daemon runs as `root` to read system usage, but dump files are group-owned by `spiketrace`. To allow a regular user to read dumps and use the viewer:
 
 ```bash
-sudo ./build/spiketrace                  # logs to stderr, Ctrl+C to stop
+sudo usermod -aG spiketrace $USER
+# You must log out and log back in for this to take effect
 ```
 
 ## Interactive Analysis (TUI)
 
-The `spiketrace-view` tool provides a terminal interface for analyzing dumps. It automatically discovers JSON files in your data directory.
+The `spiketrace-view` tool automatically discovers JSON files in `/var/lib/spiketrace`.
 
 ```bash
 spiketrace-view
 ```
 
-### UI Layout
-The viewer is divided into 3 logical panels:
-1.  **Explorer (Left)**: List of all captured dumps, sorted by time.
-2.  **Trigger (Top Right)**: Details of the anomaly that triggered the snapshot (e.g., "CPU Delta > 10%").
-3.  **Details (Bottom Right)**: The heart of the analysis. Shows the process list for the selected snapshot.
-
-### Features
--   **Auto-Discovery**: Automatically finds and lists `spike_*.json` files.
--   **Persistence Tracking**: The `HIST` column uses dots `[●○○●]` to visualize if a process existed in previous snapshots.
-    -   `●` (Filled): Process was present in that snapshot.
-    -   `○` (Empty): Process was missing (started later or terminated).
--   **Time Travel**: Navigate through the 60-snapshot history (1 minute) used to detect the spike.
-
-### Keybindings
-
+### UI Navigation
 | Key | Action |
 | :--- | :--- |
 | `Tab` | Switch focus between panels (Explorer <-> Details) |
@@ -105,34 +107,26 @@ The viewer is divided into 3 logical panels:
 | `[` / `p` | Previous snapshot (Time travel backward) |
 | `q` | Quit |
 
-### Legacy CLI Output
-Dump summary to stdout (useful for piping to grep/jq):
+**Panels:**
+1.  **Explorer (Left)**: List of all captured dumps.
+2.  **Trigger (Top Right)**: Details of what triggered the anomaly.
+3.  **Details (Bottom Right)**: Process list and metrics for the selected snapshot.
 
+### Legacy CLI Output
+Dump summary to stdout (useful for scripting):
 ```bash
 spiketrace-view-cli /var/lib/spiketrace/spike_*.json
 ```
 
-### What's Recorded
-Each dump contains:
-- **Trigger**: Anomaly type, causing process PID/name, metrics
-- **Snapshots** (10 most recent):
-    - CPU: global + per-core usage
-    - Memory: total, available, active, inactive, dirty, slab, swap
-    - Top 10 processes by CPU and by RSS
-
 ## Configuration
 
-By default, `spiketrace` uses safe compiled-in parameters.
+**Location**: `/etc/spiketrace/config.toml`  
+**Example**: `/usr/share/doc/spiketrace/config.toml.example`
 
-- **Config Path**: `~/.config/spiketrace/config.toml`
-- **Template**: `examples/config.toml`
-- **Reload Command**: `sudo pkill -HUP spiketrace` (zero downtime)
+<details>
+<summary><strong>Click to view full configuration reference</strong></summary>
 
-### Configuration Reference
-
-Below is a complete reference of every configuration key available in `config.toml`, including default values and descriptions.
-
-#### Anomaly Detection
+### Anomaly Detection
 | Key                          | Default | Description                                                                              |
 |------------------------------|---------|------------------------------------------------------------------------------------------|
 | `cpu_delta_threshold_pct`    | `10.0`  | Trigger if a process's CPU usage increases by this percentage points above its baseline. |
@@ -142,37 +136,56 @@ Below is a complete reference of every configuration key available in `config.to
 | `swap_spike_threshold_mib`   | `256`   | Trigger if swap usage increases by this amount (in MiB).                                 |
 | `cooldown_seconds`           | `5.0`   | Minimum time to wait before triggering again for the same anomaly/process.               |
 
-
-#### Sampling Engine
+### Sampling Engine
 | Key                          | Default | Description                                                                  |
 |------------------------------|---------|------------------------------------------------------------------------------|
 | `sampling_interval_seconds`  | `1.0`   | Time between checks. Lower values increase CPU usage but catch shorter spikes.|
 | `ring_buffer_capacity`       | `60`    | Number of past snapshots to keep in memory (history length).                 |
 | `context_snapshots_per_dump` | `10`    | How many historical snapshots to include in the JSON dump when a trigger fires.|
 
-#### Process Tracking
+### Process Tracking
 | Key                     | Default | Description                                                               |
 |-------------------------|---------|---------------------------------------------------------------------------|
 | `max_processes_tracked` | `512`   | Maximum number of processes to track baselines for (saves daemon memory). |
 | `top_processes_stored`  | `10`    | Number of "Top CPU" and "Top RSS" processes saved inside *each* snapshot. |
 
-#### Features (Toggles)
+### Features (Toggles)
 | Key                       | Default | Description                                  |
 |---------------------------|---------|----------------------------------------------|
 | `enable_cpu_detection`    | `true`  | Enable/Disable CPU spike triggers.           |
 | `enable_memory_detection` | `true`  | Enable/Disable Memory drop/pressure triggers.|
 | `enable_swap_detection`   | `true`  | Enable/Disable Swap usage triggers.          |
 
-#### Output
-| Key                | Default               | Description                                |
-|--------------------|-----------------------|--------------------------------------------|
-| `output_directory` | `/var/lib/spiketrace` | Directory where JSON dump files are written.|
-
-#### Advanced Tuning
+### Advanced Tuning
 | Key                      | Default | Description                                                                |
 |--------------------------|---------|----------------------------------------------------------------------------|
 | `memory_baseline_alpha`  | `0.2`   | EMA weight for memory baseline (0.00-1.00). Higher = baseline adapts faster.|
 | `process_baseline_alpha` | `0.3`   | EMA weight for process CPU baseline (0.00-1.00).                           |
+
+</details>
+
+## File Locations
+
+| Path | Description |
+|------|-------------|
+| `/etc/spiketrace/config.toml` | System-wide configuration |
+| `/var/lib/spiketrace/` | Spike dump output directory (JSON files) |
+| `/usr/lib/systemd/system/spiketrace.service` | Systemd service unit |
+| `/usr/share/man/man1/spiketrace.1` | Manual page |
+
+## Uninstall
+
+### Manual Uninstall
+```bash
+sudo make uninstall
+```
+*Note: This preserves user data. To fully purge:*
+```bash
+sudo rm -rf /etc/spiketrace /var/lib/spiketrace
+sudo groupdel spiketrace
+```
+
+
 
 ## Limitations
 
@@ -181,17 +194,5 @@ Below is a complete reference of every configuration key available in `config.to
 - **CPU/RAM/Swap only**: No network or disk I/O monitoring
 - **Top 10 processes**: Per snapshot, by CPU and by RSS
 
-## Security
-
-spiketrace runs as root to read system-wide `/proc` data.
-
-- Does not execute external commands
-- Does not open network sockets
-- Writes JSON locally only
-- No data leaves the system
-
-Root access is required to read kernel virtual memory at `/proc` across all processes.
-
 ## License
-
 This project is licensed under the GPL-2.0 License - see the [LICENSE](LICENSE) file for details.
