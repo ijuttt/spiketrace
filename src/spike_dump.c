@@ -9,6 +9,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -611,7 +612,7 @@ static spkt_status_t serialize_anomaly(spkt_json_writer_t *w,
 
 /* Secure atomic file write using O_CREAT|O_EXCL to prevent symlink attacks */
 static spkt_status_t write_atomic(const char *final_path, const char *data,
-                                  size_t len) {
+                                  size_t len, gid_t spike_gid) {
   char temp_path[SPIKE_DUMP_PATH_MAX + 16];
   int fd = -1;
   spkt_status_t result = SPKT_OK;
@@ -634,6 +635,15 @@ static spkt_status_t write_atomic(const char *final_path, const char *data,
   if (fchmod(fd, 0640) != 0) {
     fprintf(stderr, "spike_dump: fchmod failed: %s\n", strerror(errno));
     /* Non-fatal, continue */
+  }
+
+  /* Set group ownership if spiketrace group exists */
+  if (spike_gid > 0) {
+    if (fchown(fd, -1, spike_gid) != 0) {
+      fprintf(stderr, "spike_dump: fchown to gid %d failed: %s\n",
+              (int)spike_gid, strerror(errno));
+      /* Non-fatal, continue with root:root ownership */
+    }
   }
 
   /* Write data */
@@ -718,6 +728,18 @@ spkt_status_t spike_dump_init(spike_dump_ctx_t *ctx, const char *dir) {
   }
 
   ctx->dump_count = 0;
+
+  /* Resolve spiketrace group for file ownership */
+  struct group *gr = getgrnam(SPIKE_DUMP_GROUP);
+  if (gr) {
+    ctx->spike_gid = gr->gr_gid;
+    fprintf(stderr, "spike_dump: using group '%s' (gid=%d) for dump files\n",
+            SPIKE_DUMP_GROUP, (int)ctx->spike_gid);
+  } else {
+    ctx->spike_gid = 0;
+    fprintf(stderr, "spike_dump: group '%s' not found, dumps will be root-only\n",
+            SPIKE_DUMP_GROUP);
+  }
 
   return SPKT_OK;
 }
@@ -851,7 +873,7 @@ spkt_status_t spike_dump_write(spike_dump_ctx_t *ctx,
 
   /* Write atomically */
   s = write_atomic(filepath, spkt_json_get_buffer(&writer),
-                   spkt_json_get_length(&writer));
+                   spkt_json_get_length(&writer), ctx->spike_gid);
   if (s == SPKT_OK) {
     ctx->dump_count++;
     fprintf(stderr, "spike_dump: wrote %s (%zu bytes)\n", filepath,

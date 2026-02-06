@@ -18,6 +18,9 @@
 
 /* ===== BUILT-IN DEFAULTS ===== */
 
+/* Import spike_dump.h for SPIKE_DUMP_DEFAULT_DIR (allows build-time override) */
+#include "spike_dump.h"
+
 /* These match the current compile-time constants */
 #define DEFAULT_CPU_DELTA_THRESHOLD_PCT 10.0
 #define DEFAULT_NEW_PROCESS_THRESHOLD_PCT 5.0
@@ -32,7 +35,9 @@
 #define DEFAULT_TOP_PROCESSES_STORED 10
 #define DEFAULT_MEMORY_BASELINE_ALPHA 0.2
 #define DEFAULT_PROCESS_BASELINE_ALPHA 0.3
-#define DEFAULT_OUTPUT_DIRECTORY "/var/lib/spiketrace"
+
+/* Use header-defined default (supports build-time override via -DSPIKE_DUMP_DEFAULT_DIR) */
+#define DEFAULT_OUTPUT_DIRECTORY SPIKE_DUMP_DEFAULT_DIR
 
 /* ===== VALIDATION BOUNDS ===== */
 

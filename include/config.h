@@ -19,8 +19,11 @@
 /* Config file version */
 #define CONFIG_VERSION 1
 
-/* System-wide config path (for daemons running as root) */
+/* System-wide config path (for daemons running as root)
+ * Can be overridden at build time via -DCONFIG_SYSTEM_PATH=\"...\" */
+#ifndef CONFIG_SYSTEM_PATH
 #define CONFIG_SYSTEM_PATH "/etc/spiketrace/config.toml"
+#endif
 
 /* Trigger scope for grouping anomaly cooldowns */
 typedef enum {
