@@ -225,8 +225,9 @@ bool json_reader_skip(json_reader_t *r) {
   switch (r->token) {
   case JSON_TOK_OBJECT_START:
   case JSON_TOK_ARRAY_START:
-    while (json_reader_next(r) != JSON_TOK_EOF &&
-           json_reader_next(r) != JSON_TOK_ERROR) {
+    json_token_type_t tok;
+    while ((tok = json_reader_next(r)) != JSON_TOK_EOF &&
+           tok != JSON_TOK_ERROR) {
       if (r->depth < start_depth) {
         return true;
       }
