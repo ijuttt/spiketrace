@@ -33,7 +33,11 @@ typedef struct {
 /* Parsed process entry */
 typedef struct {
   int32_t pid;
+  int32_t ppid;
+  uint32_t uid;
+  char state;
   char comm[16];
+  char cmdline[256];
   double cpu_pct;
   uint64_t rss_kib;
 } proc_entry_t;
@@ -138,15 +142,33 @@ static void parse_proc_entry(json_reader_t *r, proc_entry_t *p) {
       if (json_reader_key_equals(r, "pid")) {
         json_reader_next(r);
         p->pid = (int32_t)json_reader_get_int(r);
+      } else if (json_reader_key_equals(r, "ppid")) {
+        json_reader_next(r);
+        p->ppid = (int32_t)json_reader_get_int(r);
+      } else if (json_reader_key_equals(r, "uid")) {
+        json_reader_next(r);
+        p->uid = (uint32_t)json_reader_get_uint(r);
+      } else if (json_reader_key_equals(r, "state")) {
+        json_reader_next(r);
+        const char *s = json_reader_get_string(r);
+        if (s && *s) p->state = *s;
+        else p->state = '?';
       } else if (json_reader_key_equals(r, "comm")) {
         json_reader_next(r);
         strncpy(p->comm, json_reader_get_string(r), sizeof(p->comm) - 1);
+      } else if (json_reader_key_equals(r, "cmdline")) {
+        json_reader_next(r);
+        strncpy(p->cmdline, json_reader_get_string(r), sizeof(p->cmdline) - 1);
       } else if (json_reader_key_equals(r, "cpu_pct")) {
         json_reader_next(r);
         p->cpu_pct = json_reader_get_double(r);
       } else if (json_reader_key_equals(r, "rss_kib")) {
         json_reader_next(r);
         p->rss_kib = json_reader_get_uint(r);
+      } else {
+        /* Skip unknown fields */
+        json_reader_next(r);
+        json_reader_skip(r);
       }
     }
   }
@@ -203,13 +225,17 @@ static void print_procs(const char *title, const proc_entry_t *procs,
   printf("\n=== %s ===\n", title);
   for (size_t i = 0; i < count; i++) {
     if (show_rss) {
-      printf("%2zu. [%5d] %-15s %6lu MiB  (CPU: %.1f%%)\n", i + 1, procs[i].pid,
-             procs[i].comm, (unsigned long)(procs[i].rss_kib / 1024),
-             procs[i].cpu_pct);
+      /* Format: Rank. [PID] COMM (State/UID) RSS (CPU%) */
+      printf("%2zu. [%5d] %-15s (%c/%-4u) %6lu MiB  (CPU: %5.1f%%) %s\n", i + 1, procs[i].pid,
+             procs[i].comm, procs[i].state ? procs[i].state : '?', procs[i].uid,
+             (unsigned long)(procs[i].rss_kib / 1024), procs[i].cpu_pct,
+             procs[i].cmdline);
     } else {
-      printf("%2zu. [%5d] %-15s %6.1f%%  (RSS: %lu MiB)\n", i + 1, procs[i].pid,
-             procs[i].comm, procs[i].cpu_pct,
-             (unsigned long)(procs[i].rss_kib / 1024));
+      /* Format: Rank. [PID] COMM (State/UID) CPU% (RSS) */
+      printf("%2zu. [%5d] %-15s (%c/%-4u) %5.1f%%  (RSS: %4lu MiB) %s\n", i + 1, procs[i].pid,
+             procs[i].comm, procs[i].state ? procs[i].state : '?', procs[i].uid,
+             procs[i].cpu_pct, (unsigned long)(procs[i].rss_kib / 1024),
+             procs[i].cmdline);
     }
   }
 }
@@ -272,6 +298,10 @@ int main(int argc, char *argv[]) {
                     if (reader.token == JSON_TOK_ARRAY_START) {
                       rss_count = parse_procs_array(&reader, rss_procs, MAX_PROCS);
                     }
+                  } else {
+                    /* Skip other fields in snapshot (e.g. cpu, mem) */
+                    json_reader_next(&reader);
+                    json_reader_skip(&reader);
                   }
                 }
               }

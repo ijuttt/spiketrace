@@ -8,10 +8,12 @@
 
 #define MAX_CORES 256
 #define MAX_PROCS 10
+#define PROC_CMDLINE_MAX 256
 
 /* CPU usage snapshot data */
 typedef struct {
   double global_usage_pct;
+  double iowait_pct;  /* System-wide I/O wait percentage */
   double per_core_usage_pct[MAX_CORES];
   uint16_t valid_core_count;
 } spkt_cpu_snapshot_t;
@@ -33,7 +35,11 @@ typedef struct {
 /* Single process entry in snapshot */
 typedef struct {
   int32_t pid;
+  int32_t ppid;                     /* Parent PID for lineage tracing */
+  uint32_t uid;                     /* Owning user ID for security attribution */
+  char state;                       /* Process state: R=running, S=sleeping, D=disk, Z=zombie */
   char comm[16];
+  char cmdline[PROC_CMDLINE_MAX];   /* Full command line (first 255 chars) */
   double cpu_usage_pct;
   uint64_t rss_kib;
 } spkt_proc_entry_t;

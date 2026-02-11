@@ -56,6 +56,7 @@ type Snapshot struct {
 type CPUSnapshot struct {
 	GlobalPct  float64   `json:"global_pct"`
 	PerCorePct []float64 `json:"per_core_pct"`
+	IoWaitPct  float64   `json:"iowait_pct,omitempty"` // v5: I/O wait for disk bottleneck detection
 }
 
 // MemSnapshot contains memory usage data.
@@ -88,9 +89,13 @@ type MemSnapshot struct {
 
 // ProcessEntry represents a single process in the snapshot.
 type ProcessEntry struct {
-	PID    int32   `json:"pid"`
-	Comm   string  `json:"comm"`
-	CPUPct float64 `json:"cpu_pct"`
-	RSSKiB uint64  `json:"rss_kib"`
-	RSSMiB uint64  `json:"rss_mib,omitempty"` // v3: human-readable
+	PID     int32   `json:"pid"`
+	PPID    int32   `json:"ppid,omitempty"`  // v5: parent PID for lineage tracing
+	UID     uint32  `json:"uid,omitempty"`   // v5: user ID for security attribution
+	State   string  `json:"state,omitempty"` // v5: process state (R/S/D/Z)
+	Comm    string  `json:"comm"`
+	Cmdline string  `json:"cmdline,omitempty"` // v5: full command line for forensics
+	CPUPct  float64 `json:"cpu_pct"`
+	RSSKiB  uint64  `json:"rss_kib"`
+	RSSMiB  uint64  `json:"rss_mib,omitempty"` // v3: human-readable
 }

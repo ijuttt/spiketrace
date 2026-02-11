@@ -6,7 +6,7 @@
 #include "spike_dump.h"
 #include "json_writer.h"
 #include "time_format.h"
-#include "fs_utils.h" /* [NEW] */
+#include "fs_utils.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -35,10 +35,43 @@ static spkt_status_t serialize_proc_entry(spkt_json_writer_t *w,
   if (s != SPKT_OK)
     return s;
 
+  /* Process lineage for forensics (schema v5) */
+  s = spkt_json_key(w, "ppid");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_int(w, entry->ppid);
+  if (s != SPKT_OK)
+    return s;
+
+  /* User attribution for security (schema v5) */
+  s = spkt_json_key(w, "uid");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_uint(w, entry->uid);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Process state for D-state detection (schema v5) */
+  s = spkt_json_key(w, "state");
+  if (s != SPKT_OK)
+    return s;
+  char state_str[2] = {entry->state, '\0'};
+  s = spkt_json_string(w, state_str);
+  if (s != SPKT_OK)
+    return s;
+
   s = spkt_json_key(w, "comm");
   if (s != SPKT_OK)
     return s;
   s = spkt_json_string(w, entry->comm);
+  if (s != SPKT_OK)
+    return s;
+
+  /* Full command line for security forensics (schema v5) */
+  s = spkt_json_key(w, "cmdline");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_string(w, entry->cmdline);
   if (s != SPKT_OK)
     return s;
 
@@ -131,6 +164,14 @@ static spkt_status_t serialize_snapshot(spkt_json_writer_t *w,
       return s;
   }
   s = spkt_json_end_array(w);
+  if (s != SPKT_OK)
+    return s;
+
+  /* I/O wait percentage for disk bottleneck detection (schema v5) */
+  s = spkt_json_key(w, "iowait_pct");
+  if (s != SPKT_OK)
+    return s;
+  s = spkt_json_double(w, snap->cpu.iowait_pct);
   if (s != SPKT_OK)
     return s;
 

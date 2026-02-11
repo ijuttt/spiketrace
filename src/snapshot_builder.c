@@ -68,6 +68,17 @@ spkt_status_t snapshot_builder_collect(snapshot_builder_t *builder,
     out->cpu.valid_core_count = builder->num_cores;
     out->cpu.global_usage_pct = sum / builder->num_cores;
 
+    /* Calculate system-wide iowait percentage from index 0 (total CPU) */
+    const struct cpu_jiffies *old_total = &builder->prev_jiffies[0];
+    const struct cpu_jiffies *new_total = &builder->curr_jiffies[0];
+    unsigned long long total_delta = total_jiffies(new_total) - total_jiffies(old_total);
+    if (total_delta > 0) {
+      unsigned long long iowait_delta = new_total->iowait - old_total->iowait;
+      out->cpu.iowait_pct = 100.0 * (double)iowait_delta / (double)total_delta;
+    } else {
+      out->cpu.iowait_pct = 0.0;
+    }
+
     /* Update baseline for next delta */
     memcpy(builder->prev_jiffies, builder->curr_jiffies,
            sizeof(builder->prev_jiffies));

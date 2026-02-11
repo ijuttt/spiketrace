@@ -17,6 +17,7 @@
 #define PROC_PATH "/proc"
 #define STAT_BUF_SIZE 512
 #define STATM_BUF_SIZE 128
+#define STATUS_BUF_SIZE 256
 #define DEFAULT_BASELINE_ALPHA 0.3 /* EMA smoothing for baseline (higher = more responsive) */
 
 static long page_size_bytes = 0;
@@ -40,10 +41,10 @@ static unsigned long long read_total_system_ticks(void) {
   return total_jiffies(&jiffies[0]);
 }
 
-/* Parse utime+stime, ppid, pgid, and comm from /proc/[pid]/stat */
+/* Parse utime+stime, ppid, pgid, state, and comm from /proc/[pid]/stat */
 static int parse_proc_stat(int pid, unsigned long long *out_ticks,
                            int32_t *out_ppid, int32_t *out_pgid,
-                           char *out_comm, size_t comm_size) {
+                           char *out_state, char *out_comm, size_t comm_size) {
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/stat", pid);
 
@@ -80,25 +81,87 @@ static int parse_proc_stat(int pid, unsigned long long *out_ticks,
   char *fields_start = comm_end + 2; /* skip ") " */
 
   unsigned long utime = 0, stime = 0;
+  char state_char = ' ';
   int ppid_raw = 0, pgid_raw = 0;
 
   int scanned = sscanf(
       fields_start,
-      "%*c "             /* 3: state */
+      "%c "               /* 3: state */
       "%d %d "           /* 4-5: ppid, pgrp */
       "%*d %*d %*d "     /* 6-8: session, tty, tpgid */
       "%*u %*u %*u %*u %*u " /* 9-13: flags, minflt, cminflt, majflt, cmajflt */
       "%lu %lu",         /* 14-15: utime, stime */
-      &ppid_raw, &pgid_raw, &utime, &stime);
+      &state_char, &ppid_raw, &pgid_raw, &utime, &stime);
 
-  if (scanned != 4) {
+  if (scanned != 5) {
     return -1;
   }
 
   *out_ticks = (unsigned long long)(utime + stime);
   *out_ppid = ppid_raw;
   *out_pgid = pgid_raw;
+  *out_state = state_char;
   return 0;
+}
+
+/* Read UID from /proc/[pid]/status */
+static uint32_t proc_read_uid(int pid) {
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/status", pid);
+
+  FILE *fp = fopen(path, "r");
+  if (!fp) {
+    return 0;
+  }
+
+  char line[STATUS_BUF_SIZE];
+  uint32_t uid = 0;
+
+  while (fgets(line, sizeof(line), fp)) {
+    /* Look for "Uid:\t<real>\t<effective>\t<saved>\t<fs>" */
+    if (strncmp(line, "Uid:", 4) == 0) {
+      unsigned int real_uid = 0;
+      if (sscanf(line + 4, "%u", &real_uid) == 1) {
+        uid = (uint32_t)real_uid;
+      }
+      break;
+    }
+  }
+
+  fclose(fp);
+  return uid;
+}
+
+/* Read command line from /proc/[pid]/cmdline */
+static void proc_read_cmdline(int pid, char *out_cmdline, size_t max_len) {
+  if (!out_cmdline || max_len == 0) {
+    return;
+  }
+  out_cmdline[0] = '\0';
+
+  char path[64];
+  snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+
+  FILE *fp = fopen(path, "r");
+  if (!fp) {
+    return;
+  }
+
+  size_t nread = fread(out_cmdline, 1, max_len - 1, fp);
+  fclose(fp);
+
+  if (nread == 0) {
+    return;
+  }
+
+  out_cmdline[nread] = '\0';
+
+  /* Replace NUL separators with spaces for readability */
+  for (size_t i = 0; i < nread - 1; i++) {
+    if (out_cmdline[i] == '\0') {
+      out_cmdline[i] = ' ';
+    }
+  }
 }
 
 /* Parse /proc/[pid]/statm for RSS */
@@ -263,13 +326,16 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
 
     /* Read process stats */
     if (parse_proc_stat(pid, &sample.ticks, &sample.ppid, &sample.pgid,
-                        sample.comm, sizeof(sample.comm)) != 0) {
+                        &sample.state, sample.comm, sizeof(sample.comm)) != 0) {
       continue;
     }
 
     if (parse_proc_statm(pid, &sample.rss_kib) != 0) {
       continue;
     }
+
+    /* NOTE: UID and cmdline are read lazily below (only for Top N)
+     * to avoid O(total_processes) syscall overhead per sample */
 
     /* Calculate CPU% and track baseline */
     proc_sample_t *prev = find_prev_sample(ctx, sample.pid);
@@ -326,12 +392,19 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
     copy_count = MAX_PROCS; /* Clamp to array size */
   }
   for (size_t i = 0; i < copy_count; i++) {
-    out->entries[i].pid = curr_samples[i].pid;
+    int32_t pid = curr_samples[i].pid;
+    out->entries[i].pid = pid;
+    out->entries[i].ppid = curr_samples[i].ppid;
+    out->entries[i].state = curr_samples[i].state;
     strncpy(out->entries[i].comm, curr_samples[i].comm,
             sizeof(out->entries[i].comm) - 1);
     out->entries[i].comm[sizeof(out->entries[i].comm) - 1] = '\0';
     out->entries[i].cpu_usage_pct = curr_samples[i].cpu_pct;
     out->entries[i].rss_kib = curr_samples[i].rss_kib;
+
+    /* Lazy load expensive metadata only for Top N */
+    out->entries[i].uid = proc_read_uid(pid);
+    proc_read_cmdline(pid, out->entries[i].cmdline, sizeof(out->entries[i].cmdline));
   }
   out->valid_entry_count = (uint32_t)copy_count;
 
@@ -339,12 +412,19 @@ spkt_status_t proc_collect_snapshot(proc_context_t *ctx,
   qsort(curr_samples, curr_count, sizeof(proc_sample_t), compare_samples_by_rss);
 
   for (size_t i = 0; i < copy_count; i++) {
-    out->top_rss_entries[i].pid = curr_samples[i].pid;
+    int32_t pid = curr_samples[i].pid;
+    out->top_rss_entries[i].pid = pid;
+    out->top_rss_entries[i].ppid = curr_samples[i].ppid;
+    out->top_rss_entries[i].state = curr_samples[i].state;
     strncpy(out->top_rss_entries[i].comm, curr_samples[i].comm,
             sizeof(out->top_rss_entries[i].comm) - 1);
     out->top_rss_entries[i].comm[sizeof(out->top_rss_entries[i].comm) - 1] = '\0';
     out->top_rss_entries[i].cpu_usage_pct = curr_samples[i].cpu_pct;
     out->top_rss_entries[i].rss_kib = curr_samples[i].rss_kib;
+
+    /* Lazy load expensive metadata only for Top N */
+    out->top_rss_entries[i].uid = proc_read_uid(pid);
+    proc_read_cmdline(pid, out->top_rss_entries[i].cmdline, sizeof(out->top_rss_entries[i].cmdline));
   }
   out->valid_rss_count = (uint32_t)copy_count;
 

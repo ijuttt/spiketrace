@@ -17,7 +17,7 @@
  */
 
 /* Schema version for forward compatibility */
-#define SPIKE_DUMP_SCHEMA_VERSION 4
+#define SPIKE_DUMP_SCHEMA_VERSION 5
 
 /* Maximum snapshots to include in a dump (pre-spike context + current) */
 #define SPIKE_DUMP_MAX_SNAPSHOTS 10

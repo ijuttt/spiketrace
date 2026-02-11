@@ -18,6 +18,8 @@ typedef struct {
   int32_t pid;
   int32_t ppid;
   int32_t pgid;
+  uint32_t uid;                     /* Owning user ID */
+  char state;                       /* Process state (R/S/D/Z/T/etc) */
   unsigned long long ticks; /* utime + stime */
   uint64_t rss_kib;
   double cpu_pct;          /* current CPU% (can exceed 100% on multi-core) */
@@ -25,6 +27,7 @@ typedef struct {
   uint8_t sample_count;    /* how many samples seen for this PID */
   bool is_new;             /* first time seen this PID (this snapshot) */
   char comm[16];
+  char cmdline[PROC_CMDLINE_MAX];   /* Full command line */
   int valid;
 } proc_sample_t;
 
