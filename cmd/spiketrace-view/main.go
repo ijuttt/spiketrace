@@ -26,8 +26,8 @@ func main() {
 	// Create and run the Bubble Tea program
 	p := tea.NewProgram(
 		bubbletea.NewApp(),
-		tea.WithAltScreen(),       // Use alternate screen buffer
-		tea.WithMouseCellMotion(), // Enable mouse support
+		tea.WithAltScreen(),      // Use alternate screen buffer
+		tea.WithMouseAllMotion(), // Enable ALL mouse events (needed for dragging)
 	)
 
 	if _, err := p.Run(); err != nil {

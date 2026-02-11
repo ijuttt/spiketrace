@@ -26,11 +26,11 @@ const (
 	PanelCount
 )
 
-// Panel width ratios
+// Drag targets
 const (
-	explorerRatio = 0.20
-	triggerRatio  = 0.35
-	viewerRatio   = 0.45
+	DragNone = iota
+	DragExplorer
+	DragTrigger
 )
 
 // App is the main application model.
@@ -48,9 +48,14 @@ type App struct {
 	statusMsg   string
 	errMsg      string
 
-	// Layout
-	width  int
-	height int
+	// Layout and Resizing
+	width          int
+	height         int
+	explorerRatio  float64
+	triggerRatio   float64
+	dragActive     int     // DragNone, DragExplorer, DragTrigger
+	dragStartMX    int     // Mouse X at drag start
+	dragStartRatio float64 // Ratio at drag start
 
 	// Key bindings
 	keys KeyMap
@@ -66,6 +71,10 @@ func NewApp() App {
 		activePanel:   PanelExplorer,
 		keys:          DefaultKeyMap(),
 		statusMsg:     "Loading files...",
+		// Default ratios
+		explorerRatio: 0.20,
+		triggerRatio:  0.35,
+		dragActive:    DragNone,
 	}
 }
 
@@ -107,6 +116,81 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.height = msg.Height
 		a.confirmDialog.SetSize(msg.Width, msg.Height)
 		a.updateComponentSizes()
+
+	case tea.MouseMsg:
+		// 1. Handle Release -> Stop Dragging
+		if msg.Type == tea.MouseRelease {
+			if a.dragActive != DragNone {
+				a.dragActive = DragNone
+				a.statusMsg = "Ready" // Reset status
+			}
+			return a, nil
+		}
+
+		// 2. Handle Dragging (Motion or Left Press while active)
+		if a.dragActive != DragNone && (msg.Type == tea.MouseMotion || msg.Type == tea.MouseLeft) {
+			deltaX := msg.X - a.dragStartMX
+			deltaRatio := float64(deltaX) / float64(a.width)
+			newRatio := a.dragStartRatio + deltaRatio // Base change on original ratio
+
+			switch a.dragActive {
+			case DragExplorer:
+				// Clamp: Min 10%, Max 40%
+				if newRatio < 0.10 {
+					newRatio = 0.10
+				}
+				if newRatio > 0.40 {
+					newRatio = 0.40
+				}
+				a.explorerRatio = newRatio
+
+			case DragTrigger:
+				// Clamp: Min 20%, Max (remaining - 10%)
+				if newRatio < 0.20 {
+					newRatio = 0.20
+				}
+				// Ensure Viewer has at least 10%
+				if a.explorerRatio+newRatio > 0.90 {
+					newRatio = 0.90 - a.explorerRatio
+				}
+				a.triggerRatio = newRatio
+			}
+			a.updateComponentSizes()
+			return a, nil
+		}
+
+		// 3. Handle Click (Start Drag or Focus)
+		if msg.Type == tea.MouseLeft && a.dragActive == DragNone {
+			// Hit test for splitters (tolerance +/- 2 chars for ease of use)
+			s1 := int(float64(a.width) * a.explorerRatio)
+			// Note: Visual position is sum of int widths
+			s2Float := int(float64(a.width) * (a.explorerRatio + a.triggerRatio))
+			s2Visual := int(float64(a.width)*a.explorerRatio) + int(float64(a.width)*a.triggerRatio)
+
+			// Check Splitter 1 (Explorer | Info)
+			if msg.X >= s1-2 && msg.X <= s1+2 {
+				a.dragActive = DragExplorer
+				a.dragStartMX = msg.X
+				a.dragStartRatio = a.explorerRatio
+				a.statusMsg = "Resizing Explorer..."
+			} else if (msg.X >= s2Float-2 && msg.X <= s2Float+2) || (msg.X >= s2Visual-2 && msg.X <= s2Visual+2) {
+				// Check Splitter 2 (Info | Viewer)
+				a.dragActive = DragTrigger
+				a.dragStartMX = msg.X
+				a.dragStartRatio = a.triggerRatio
+				a.statusMsg = "Resizing Info Panel..."
+			} else {
+				// Focus logic
+				if msg.X < s1 {
+					a.activePanel = PanelExplorer
+				} else if msg.X < s2Visual {
+					a.activePanel = PanelTrigger
+				} else {
+					a.activePanel = PanelViewer
+				}
+				a.updateFocus()
+			}
+		}
 
 	case tea.KeyMsg:
 		// Global keys
@@ -281,8 +365,9 @@ func (a *App) updateComponentSizes() {
 	// Reserve space for header and status bar
 	contentHeight := a.height - 4
 
-	explorerWidth := int(float64(a.width) * explorerRatio)
-	triggerWidth := int(float64(a.width) * triggerRatio)
+	// Use state variables instead of constants
+	explorerWidth := int(float64(a.width) * a.explorerRatio)
+	triggerWidth := int(float64(a.width) * a.triggerRatio)
 	viewerWidth := a.width - explorerWidth - triggerWidth - 6 // Account for borders
 
 	a.explorer.SetSize(explorerWidth, contentHeight)
