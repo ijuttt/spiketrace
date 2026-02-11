@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/ijuttt/spiketrace/internal/model"
 	"github.com/ijuttt/spiketrace/internal/ui/styles"
 )
@@ -18,10 +19,13 @@ import (
 const (
 	widthRank    = 3
 	widthPID     = 7
-	widthPersist = 12
-	// widthComm is calculated dynamically
-	widthRSS = 8
-	widthCPU = 6
+	widthPPID    = 7
+	widthUID     = 6
+	widthState   = 2
+	widthPersist = 10
+	widthComm    = 8
+	widthRSS     = 8
+	widthCPU     = 6
 )
 
 // Viewer displays process lists and detailed data.
@@ -113,7 +117,15 @@ func (v Viewer) View() string {
 	return v.applyPanelStyle(b.String())
 }
 
-// renderProcessList renders a list of processes.
+// Column priority (lower number = higher priority, kept longer)
+type columnPriority struct {
+	name     string
+	width    int
+	priority int
+	visible  bool
+}
+
+// renderProcessList renders a list of processes with dynamic column visibility.
 func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRSS bool, limit int) string {
 	var b strings.Builder
 
@@ -125,94 +137,235 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 		return b.String()
 	}
 
-	// Calculate flexible column width for Command
-	// Fixed spacing: 5 spaces between 6 columns
-	fixedWidth := widthRank + widthPID + widthPersist + widthRSS + widthCPU + 5
-	// Available width (subtracting 4 for panel padding/borders roughly)
-	widthComm := v.width - fixedWidth - 4
-	if widthComm < 10 {
-		widthComm = 10 // Minimum safe width
+	// Define columns with priority (1=highest, 5=lowest)
+	columns := []columnPriority{
+		{"rank", widthRank, 1, true},
+		{"pid", widthPID, 1, true},
+		{"rss", widthRSS, 1, true},
+		{"cpu", widthCPU, 1, true},
+		{"comm", 8, 1, true}, // minimum width, will expand
+		{"state", widthState, 2, true},
+		{"uid", widthUID, 3, true},
+		{"ppid", widthPPID, 4, true},
+		{"persist", widthPersist, 5, true},
 	}
 
-	// Header
-	if byRSS {
-		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %*s %*s",
-			widthRank, "#",
-			widthPID, "PID",
-			widthPersist, "HIST",
-			widthComm, "COMM",
-			widthRSS, "RSS",
-			widthCPU, "CPU")
-		b.WriteString(styles.LabelStyle.Render(header))
-	} else {
-		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %*s %*s",
-			widthRank, "#",
-			widthPID, "PID",
-			widthPersist, "HIST",
-			widthComm, "COMM",
-			widthCPU, "CPU",
-			widthRSS, "RSS")
-		b.WriteString(styles.LabelStyle.Render(header))
+	availableWidth := v.width - 4 // Account for panel padding/borders
+	minCommWidth := 8
+
+	// Calculate and iteratively hide lowest priority columns until we fit
+	for {
+		// Calculate fixed width (all visible except comm)
+		fixedWidth := 0
+		visibleCount := 0
+		commIdx := -1
+		for i := range columns {
+			if columns[i].visible {
+				if columns[i].name != "comm" {
+					fixedWidth += columns[i].width
+				} else {
+					commIdx = i
+				}
+				visibleCount++
+			}
+		}
+
+		spacesWidth := 0
+		if visibleCount > 0 {
+			spacesWidth = visibleCount - 1
+		}
+
+		widthComm := availableWidth - fixedWidth - spacesWidth
+
+		if widthComm >= minCommWidth {
+			if commIdx >= 0 {
+				columns[commIdx].width = widthComm
+			}
+			break
+		}
+
+		// Find lowest priority visible column (excluding critical ones with priority 1)
+		lowestPriority := 0
+		lowestIdx := -1
+		for i, col := range columns {
+			if col.visible && col.priority > 1 && col.priority > lowestPriority { // FIX: > instead of >=
+				lowestPriority = col.priority
+				lowestIdx = i
+			}
+		}
+
+		if lowestIdx == -1 {
+			// No more columns to hide, force minimum comm width
+			if commIdx >= 0 {
+				columns[commIdx].width = minCommWidth
+			}
+			break
+		}
+
+		// Hide the lowest priority column
+		columns[lowestIdx].visible = false
 	}
+
+	// Extract final widths and visibility
+	var (
+		wRank, wPID, wPPID, wUID, wState, wPersist, wComm, wRSS, wCPU                            int
+		showRank, showPID, showPPID, showUID, showState, showPersist, showComm, showRSS, showCPU bool
+	)
+
+	for _, col := range columns {
+		switch col.name {
+		case "rank":
+			wRank, showRank = col.width, col.visible
+		case "pid":
+			wPID, showPID = col.width, col.visible
+		case "ppid":
+			wPPID, showPPID = col.width, col.visible
+		case "uid":
+			wUID, showUID = col.width, col.visible
+		case "state":
+			wState, showState = col.width, col.visible
+		case "persist":
+			wPersist, showPersist = col.width, col.visible
+		case "comm":
+			wComm, showComm = col.width, col.visible
+		case "rss":
+			wRSS, showRSS = col.width, col.visible
+		case "cpu":
+			wCPU, showCPU = col.width, col.visible
+		}
+	}
+
+	// Build header
+	var headerParts []string
+	if showRank {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wRank, "#"))
+	}
+	if showPID {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wPID, "PID"))
+	}
+	if showPPID {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wPPID, "PPID"))
+	}
+	if showUID {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wUID, "UID"))
+	}
+	if showState {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wState, "S"))
+	}
+	if showPersist {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wPersist, "HIST"))
+	}
+	if showComm {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wComm, "COMM"))
+	}
+
+	// Order CPU/RSS based on byRSS flag
+	if byRSS {
+		if showRSS {
+			headerParts = append(headerParts, fmt.Sprintf("%*s", wRSS, "RSS"))
+		}
+		if showCPU {
+			headerParts = append(headerParts, fmt.Sprintf("%*s", wCPU, "CPU"))
+		}
+	} else {
+		if showCPU {
+			headerParts = append(headerParts, fmt.Sprintf("%*s", wCPU, "CPU"))
+		}
+		if showRSS {
+			headerParts = append(headerParts, fmt.Sprintf("%*s", wRSS, "RSS"))
+		}
+	}
+
+	header := strings.Join(headerParts, " ")
+	b.WriteString(styles.LabelStyle.Render(header))
 	b.WriteString("\n")
 
 	// Process entries
 	count := len(procs)
 	show := limit
 	truncated := false
-
 	if count > limit {
-		// Reserve 1 line for "... and X more"
 		show = limit - 1
 		truncated = true
 	}
-
-	// Safety clamp
 	if show < 0 {
 		show = 0
 	}
 
 	for i := 0; i < show && i < count; i++ {
 		p := procs[i]
+		var lineParts []string
 
-		// Rank
-		rank := styles.ValueStyle.Render(fmt.Sprintf("%*d.", widthRank-1, i+1))
+		if showRank {
+			rank := styles.ValueStyle.Render(fmt.Sprintf("%*d.", wRank-1, i+1))
+			lineParts = append(lineParts, rank)
+		}
+		if showPID {
+			pidStr := fmt.Sprintf("[%*d]", wPID-2, p.PID)
+			pid := styles.PIDStyle.Render(pidStr)
+			lineParts = append(lineParts, pid)
+		}
+		if showPPID {
+			ppidStr := fmt.Sprintf("%*d", wPPID, p.PPID)
+			ppid := styles.ValueStyle.Render(ppidStr)
+			lineParts = append(lineParts, ppid)
+		}
+		if showUID {
+			uidStr := fmt.Sprintf("%*d", wUID, p.UID)
+			uid := styles.ValueStyle.Render(uidStr)
+			lineParts = append(lineParts, uid)
+		}
+		if showState {
+			stateStr := string(p.State)
+			if stateStr == "" {
+				stateStr = "?"
+			}
+			state := styles.ValueStyle.Render(fmt.Sprintf("%*s", wState, stateStr))
+			lineParts = append(lineParts, state)
+		}
+		if showPersist {
+			persist := v.renderPersistence(p.PID)
+			persistStyled := styles.DimItemStyle.Render(fmt.Sprintf("%-*s", wPersist, persist))
+			lineParts = append(lineParts, persistStyled)
+		}
+		if showComm {
+			comm := p.Comm
+			// FIX: Use rune count for unicode-safe truncation
+			commRunes := []rune(comm)
+			if len(commRunes) > wComm {
+				if wComm > 3 {
+					comm = string(commRunes[:wComm-3]) + "..."
+				} else if wComm > 0 {
+					comm = string(commRunes[:wComm])
+				}
+			}
+			commStyled := styles.ProcessStyle.Render(fmt.Sprintf("%-*s", wComm, comm))
+			lineParts = append(lineParts, commStyled)
+		}
 
-		// PID (dynamic width)
-		// We format the PID specifically to fit the width
-		pidStr := fmt.Sprintf("[%*d]", widthPID-2, p.PID)
-		pid := styles.PIDStyle.Render(pidStr)
+		// RSS and CPU values
+		rssVal := fmt.Sprintf("%*d Mi", wRSS-3, p.RSSKiB/kiBToMiB)
+		cpuVal := fmt.Sprintf("%*.1f%%", wCPU-1, p.CPUPct)
 
-		// Persistence
-		persist := v.renderPersistence(p.PID)
-		persistStyled := styles.DimItemStyle.Render(fmt.Sprintf("%-*s", widthPersist, persist))
-
-		// Command (dynamic width with truncation)
-		comm := p.Comm
-		// Available width for command text inside column
-		maxComm := widthComm
-		if len(comm) > maxComm {
-			comm = comm[:maxComm] // Truncate to fit column (no ellipsis to save space, or len-1?)
-			// Actually nice to have ellipsis.
-			if maxComm > 3 {
-				comm = comm[:maxComm-3] + "..."
-			} else {
-				comm = comm[:maxComm]
+		if byRSS {
+			if showRSS {
+				lineParts = append(lineParts, styles.HighlightValueStyle.Render(rssVal))
+			}
+			if showCPU {
+				lineParts = append(lineParts, styles.ValueStyle.Render(cpuVal))
+			}
+		} else {
+			if showCPU {
+				lineParts = append(lineParts, styles.HighlightValueStyle.Render(cpuVal))
+			}
+			if showRSS {
+				lineParts = append(lineParts, styles.ValueStyle.Render(rssVal))
 			}
 		}
-		commStyled := styles.ProcessStyle.Render(fmt.Sprintf("%-*s", widthComm, comm))
 
-		// Values
-		var line string
-		if byRSS {
-			rss := styles.HighlightValueStyle.Render(fmt.Sprintf("%*d Mi", widthRSS-3, p.RSSKiB/kiBToMiB))
-			cpu := styles.ValueStyle.Render(fmt.Sprintf("%*.1f%%", widthCPU-1, p.CPUPct))
-			line = fmt.Sprintf("%s %s %s %s %s %s", rank, pid, persistStyled, commStyled, rss, cpu)
-		} else {
-			cpu := styles.HighlightValueStyle.Render(fmt.Sprintf("%*.1f%%", widthCPU-1, p.CPUPct))
-			rss := styles.ValueStyle.Render(fmt.Sprintf("%*d Mi", widthRSS-3, p.RSSKiB/kiBToMiB))
-			line = fmt.Sprintf("%s %s %s %s %s %s", rank, pid, persistStyled, commStyled, cpu, rss)
-		}
+		line := strings.Join(lineParts, " ")
+		// Safety: Truncate to available width
+		line = truncateToWidth(line, availableWidth)
 
 		b.WriteString(line)
 		if i < show-1 || truncated {
@@ -220,13 +373,21 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 		}
 	}
 
-	// Show count if truncated
 	if truncated {
-		// b.WriteString("\n") // Already added newline above
 		b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf("  ... and %d more", count-show)))
 	}
 
 	return b.String()
+}
+
+// truncateToWidth truncates a string to fit within maxWidth, accounting for ANSI codes.
+func truncateToWidth(s string, maxWidth int) string {
+	w := lipgloss.Width(s)
+	if w <= maxWidth {
+		return s
+	}
+
+	return lipgloss.NewStyle().MaxWidth(maxWidth).Render(s)
 }
 
 // applyPanelStyle applies the appropriate panel style.

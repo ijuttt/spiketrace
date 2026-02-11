@@ -37,6 +37,25 @@ const (
 )
 
 // -----------------------------------------------------------------------------
+// Key Bindings
+// -----------------------------------------------------------------------------
+
+var (
+	triggerKeyUp = key.NewBinding(
+		key.WithKeys("up", "k"),
+	)
+	triggerKeyDown = key.NewBinding(
+		key.WithKeys("down", "j"),
+	)
+	triggerKeyLeft = key.NewBinding(
+		key.WithKeys("left", "h"),
+	)
+	triggerKeyRight = key.NewBinding(
+		key.WithKeys("right", "l"),
+	)
+)
+
+// -----------------------------------------------------------------------------
 // Trigger Component
 // -----------------------------------------------------------------------------
 
@@ -145,31 +164,38 @@ func (t *Trigger) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, keyUp):
+		case key.Matches(msg, triggerKeyUp):
+			// Newer / Up
 			if t.dump != nil && t.snapshotIdx > 0 {
 				t.snapshotIdx--
 			}
-		case key.Matches(msg, keyDown):
+		case key.Matches(msg, triggerKeyDown):
+			// Older / Down
 			if t.dump != nil && t.snapshotIdx < len(t.dump.Snapshots)-1 {
 				t.snapshotIdx++
 			}
-		// Vim-style horizontal navigation
-		case msg.String() == "h":
+		case key.Matches(msg, triggerKeyLeft):
+			// Left -> Older (Time flows Left -> Right)
+			// Move towards index N (Oldest)
+			if t.dump != nil && t.snapshotIdx < len(t.dump.Snapshots)-1 {
+				t.snapshotIdx++
+			}
+		case key.Matches(msg, triggerKeyRight):
+			// Right -> Newer
+			// Move towards index 0 (Newest)
 			if t.dump != nil && t.snapshotIdx > 0 {
 				t.snapshotIdx--
-			}
-		case msg.String() == "l":
-			if t.dump != nil && t.snapshotIdx < len(t.dump.Snapshots)-1 {
-				t.snapshotIdx++
 			}
 		// Jump to first/last
 		case msg.String() == "g":
 			if t.dump != nil {
-				t.snapshotIdx = 0
+				// Oldest (First in Timeline view, Last in Array)
+				t.snapshotIdx = len(t.dump.Snapshots) - 1
 			}
 		case msg.String() == "G":
-			if t.dump != nil && len(t.dump.Snapshots) > 0 {
-				t.snapshotIdx = len(t.dump.Snapshots) - 1
+			if t.dump != nil {
+				// Newest (Last in Timeline view, First in Array)
+				t.snapshotIdx = 0
 			}
 		// Jump to trigger
 		case msg.String() == "0":
@@ -412,43 +438,52 @@ func (t Trigger) renderTimeline() string {
 		return b.String()
 	}
 
-	// Extract values for sparkline
-	cpuValues := make([]float64, len(t.cpuTimeline.Points))
+	// Extract values for sparkline in REVERSE order
+	// Data is [Newest...Oldest]. We want Left(Old)...Right(New).
+	count := len(t.cpuTimeline.Points)
+	cpuValues := make([]float64, count)
 	for i, p := range t.cpuTimeline.Points {
-		cpuValues[i] = p.Value
+		cpuValues[count-1-i] = p.Value
 	}
+
+	// Highlight index needs to be reversed too
+	// Real Index: t.snapshotIdx. Visual Index: count - 1 - t.snapshotIdx.
+	visualHighlightIdx := count - 1 - t.snapshotIdx
 
 	// Render CPU sparkline
 	b.WriteString(styles.MetricSecondaryStyle.Render("CPU "))
 	cpuSpark := widgets.NewSparkline(cpuValues, timelineWidth).
-		WithHighlight(t.cpuTimeline.TriggerIndex)
+		WithHighlight(visualHighlightIdx)
 	b.WriteString(cpuSpark.Render())
 	b.WriteString("\n")
 
 	// Render Memory sparkline
 	if len(t.memTimeline.Points) > 0 {
-		memValues := make([]float64, len(t.memTimeline.Points))
+		memValues := make([]float64, count)
 		for i, p := range t.memTimeline.Points {
-			memValues[i] = p.Value
+			memValues[count-1-i] = p.Value
 		}
 		b.WriteString(styles.MetricSecondaryStyle.Render("RAM "))
 		memSpark := widgets.NewSparkline(memValues, timelineWidth).
-			WithHighlight(t.memTimeline.TriggerIndex)
+			WithHighlight(visualHighlightIdx)
 		b.WriteString(memSpark.Render())
 		b.WriteString("\n")
 	}
 
 	// Time axis labels
 	if len(t.cpuTimeline.Points) > 0 {
-		firstOffset := t.cpuTimeline.Points[0].OffsetSeconds
-		lastOffset := t.cpuTimeline.Points[len(t.cpuTimeline.Points)-1].OffsetSeconds
+		// Newest is at index 0 (Right), Oldest is at index Count-1 (Left)
+		// Timeline draws Left -> Right
+		leftPoint := t.cpuTimeline.Points[count-1]
+		rightPoint := t.cpuTimeline.Points[0]
+
 		b.WriteString("    ") // Indent to match label "CPU " (4 chars)
-		b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf("T%.0fs", firstOffset)))
+		b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf("T%.0fs", leftPoint.OffsetSeconds)))
 		padding := timelineWidth - 8
 		if padding > 0 {
 			b.WriteString(strings.Repeat(" ", padding))
 		}
-		b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf("T%.0fs", lastOffset)))
+		b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf("T%.0fs", rightPoint.OffsetSeconds)))
 	}
 
 	// Current position indicator
@@ -574,6 +609,16 @@ func (t Trigger) renderCPU(c *model.CPUSnapshot) string {
 		b.WriteString(styles.MetricSecondaryStyle.Render(fmt.Sprintf(" (%d cores)", len(c.PerCorePct))))
 	}
 
+	// I/O wait (schema v5)
+	if c.IoWaitPct > 0 {
+		b.WriteString("\n")
+		b.WriteString(styles.MetricLabelStyle.Render(fmt.Sprintf("%-*s", widthLabel, "I/O Wait")))
+		ioBar := widgets.NewProgressBar(c.IoWaitPct, progressBarWidth)
+		b.WriteString(ioBar.Render())
+		b.WriteString(" ")
+		b.WriteString(styles.MetricValueStyle.Render(fmt.Sprintf("%.1f%%", c.IoWaitPct)))
+	}
+
 	return b.String()
 }
 
@@ -600,8 +645,10 @@ func (t Trigger) renderSnapshotNav() string {
 	// Visual progress dots (max 10 to avoid overflow)
 	maxDots := 10
 	if count <= maxDots {
-		for i := 0; i < count; i++ {
-			if i <= t.snapshotIdx {
+		// Render in Reverse Loop (Oldest N -> Newest 0)
+		for i := count - 1; i >= 0; i-- {
+			// Fill history (indices greater than current idx) to represent time flow
+			if i >= t.snapshotIdx {
 				b.WriteString(styles.MetricValueStyle.Render("●"))
 			} else {
 				b.WriteString(styles.MetricSecondaryStyle.Render("○"))
