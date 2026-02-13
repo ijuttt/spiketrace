@@ -7,12 +7,10 @@ pkgdesc="A system resources spike detection and tracing tool for anomaly process
 arch=('x86_64')
 url="https://github.com/ijuttt/spiketrace"
 license=('GPL-2.0-only')
-depends=('glibc')
-makedepends=('go>=1.21' 'git' 'gcc' 'make')
-optdepends=('systemd: for running as a service')
+depends=()
+makedepends=('go>=1.21' 'git')
 provides=("spiketrace=${pkgver}")
 conflicts=('spiketrace')
-install=spiketrace.install
 source=("git+https://github.com/ijuttt/spiketrace.git")
 sha256sums=('SKIP')
 backup=('etc/spiketrace/config.toml')
@@ -40,5 +38,6 @@ package() {
     
     make DESTDIR="$pkgdir" PREFIX=/usr SYSCONFDIR=/etc install
     
+    # State directory 
     install -dm0750 "$pkgdir/var/lib/spiketrace"
 }

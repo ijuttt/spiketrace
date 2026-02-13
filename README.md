@@ -16,6 +16,7 @@ https://github.com/user-attachments/assets/2f1f8996-c6a8-4c83-a112-04828dbbdb95
 
 <a href="#why-spiketrace">Why</a> |
 <a href="#how-it-works">How It Works</a> |
+<a href="#build">Build</a> |
 <a href="#installation">Installation</a> |
 <a href="#running-the-service">Running</a> |
 <a href="#notifications--integrations">Integrations</a> |
@@ -70,42 +71,68 @@ Modern Linux systems are noisy and ephemeral. Most monitoring stacks are too hea
 
 </details>
 
-## Installation
+## Build
+
 **Build Requirements**: GCC, Go 1.21+, and Make.
 
 ```bash
 git clone https://github.com/ijuttt/spiketrace.git
 cd spiketrace
-
-make                    # build all components
-sudo make install       # install to /usr/local
-
-# IMPORTANT: For /usr/local installs, you must copy the service file manually:
-sudo cp build/spiketrace.service /etc/systemd/system/
+make
 ```
+
+**This builds:**
+- `spiketrace`: The core daemon.
+- `spiketrace-view`: Interactive TUI viewer (Go).
+- `spiketrace-view-cli`: Legacy CLI viewer (C).
+- `spiketrace.service`: Generated systemd unit (in `build/`, optional).
+
+To run without installing:
+```bash
+sudo ./build/spiketrace
+```
+
+## Installation
+
+By default, the Makefile installs to `/usr/local`.
+
+```bash
+sudo make install
+```
+- **Binaries**: `/usr/local/bin/`
+- **Config**: `/usr/local/etc/spiketrace/config.toml`
+- **Systemd**: Service registration is skipped by default for security. See the instructions printed by `make install` to manually register the service.
+
+> **Note**: For package maintainers, the `PREFIX` and `DESTDIR` variables are supported (e.g., `make PREFIX=/usr DESTDIR=./pkg install`).
 
 ## Running the Service
 
 ### Systemd (Recommended)
 ```bash
-# Start the service and enable it on boot
+# Start and enable on boot
 sudo systemctl enable --now spiketrace
 
-# Watch logs (where spikes and triggers are reported)
+# Watch logs for detected spikes
 journalctl -u spiketrace -f
 ```
 
-### Manual Execution
+### Manual Execution (Standard Init / Other)
+Suitable for OpenRC, runit, or running in the foreground.
 ```bash
 sudo spiketrace
 ```
 
-###  Non-Root Access (Important)
-The daemon runs as `root` to read system usage, but dump files are group-owned by `spiketrace`. To allow a regular user to read dumps and use the viewer:
+### Non-Root Access (Important)
+The daemon runs as **root** to capture system-wide metrics, but dump files are group-owned by `spiketrace` to allow safe analysis. To allow a regular user to use the viewer:
 
 ```bash
+# 1. Create the group if it doesn't exist
+sudo groupadd -r spiketrace 2>/dev/null || true
+
+# 2. Add your user to the group
 sudo usermod -aG spiketrace $USER
-# You must log out and log back in for this to take effect
+
+# 3. Apply changes (you must log out and back in)
 ```
 
 
@@ -155,10 +182,10 @@ spiketrace-view-cli /var/lib/spiketrace/spike_*.json
 
 ## Configuration
 
-**System Config**: `/etc/spiketrace/config.toml` (Edit this file to customize behavior)  
+**System Config**: `/etc/spiketrace/config.toml` (or `/usr/local/etc/...` depending on prefix)  
 **Default Reference**: `[examples/config.toml](examples/config.toml)`
 
-> **Note**: Tune these detection thresholds to match your system's baseline and avoid false alarms according to your needs.
+> **Tip**: Detection thresholds should be tuned to your environment's baseline to minimize false alarms.
 
 <details>
 <summary><strong>Click to view full configuration reference</strong></summary>
@@ -207,7 +234,8 @@ spiketrace-view-cli /var/lib/spiketrace/spike_*.json
 |------|-------------|
 | `/etc/spiketrace/config.toml` | System-wide configuration |
 | `/var/lib/spiketrace/` | Spike dump output directory (JSON files) |
-| `/usr/lib/systemd/system/spiketrace.service` | Systemd service unit |
+| `/usr/lib/systemd/system/spiketrace.service` | Systemd service unit (Optional) |
+| `/usr/lib/sysusers.d/spiketrace.conf` | Systemd sysusers config (Optional) |
 | `/usr/share/man/man1/spiketrace.1` | Manual page |
 
 ## Uninstall
@@ -219,6 +247,7 @@ sudo make uninstall
 *Note: This preserves user data. To fully purge:*
 ```bash
 sudo rm -rf /etc/spiketrace /var/lib/spiketrace
+# If installed manually (not via package manager):
 sudo groupdel spiketrace
 ```
 

@@ -19,6 +19,7 @@ STATEDIR ?= /var/lib/spiketrace
 
 SYSTEMDDIR ?= /usr/lib/systemd
 TMPFILESDIR ?= /usr/lib/tmpfiles.d
+SYSUSERSDIR ?= /usr/lib/sysusers.d
 
 # -----------------------------------------------------------------------------
 # Version Management
@@ -145,10 +146,9 @@ install-bin:
 	install -Dm755 $(VIEWER_OUT) $(DESTDIR)$(BINDIR)/spiketrace-view-cli
 	install -Dm755 $(TUI_OUT) $(DESTDIR)$(BINDIR)/spiketrace-view
 
+# Install configuration files (example config and default config if missing)
 install-config:
-	# Install example config to doc directory (always)
 	install -Dm644 examples/config.toml $(DESTDIR)$(DOCDIR)/config.toml.example
-	# Install actual config only if it doesn't exist (don't overwrite user config)
 	@if [ ! -f "$(DESTDIR)$(SYSCONFDIR)/spiketrace/config.toml" ]; then \
 		install -Dm644 examples/config.toml $(DESTDIR)$(SYSCONFDIR)/spiketrace/config.toml; \
 		echo "Installed config to $(DESTDIR)$(SYSCONFDIR)/spiketrace/config.toml"; \
@@ -178,6 +178,7 @@ install-systemd:
 ifeq ($(PREFIX),/usr)
 	install -Dm644 $(BUILD_DIR)/spiketrace.service $(DESTDIR)$(SYSTEMDDIR)/system/spiketrace.service
 	install -Dm644 $(BUILD_DIR)/spiketrace.conf $(DESTDIR)$(TMPFILESDIR)/spiketrace.conf
+	install -Dm644 spiketrace.sysusers $(DESTDIR)$(SYSUSERSDIR)/spiketrace.conf
 	@echo "Installed systemd service and tmpfiles.d config"
 else
 	@echo "Skipping systemd auto-install (PREFIX=$(PREFIX) != /usr)"
@@ -200,6 +201,7 @@ uninstall:
 ifeq ($(PREFIX),/usr)
 	rm -f $(DESTDIR)$(SYSTEMDDIR)/system/spiketrace.service
 	rm -f $(DESTDIR)$(TMPFILESDIR)/spiketrace.conf
+	rm -f $(DESTDIR)$(SYSUSERSDIR)/spiketrace.conf
 endif
 	# NOTE: Config and state directory are NOT removed (user data)
 	@echo "Config preserved at: $(DESTDIR)$(SYSCONFDIR)/spiketrace/"
