@@ -1,13 +1,13 @@
 pkgbase = spiketrace-git
 	pkgdesc = A system resources spike detection and tracing tool for anomaly processes detection
-	pkgver = 0.1.0
+	pkgver = v0.1.0.r0.g8ee524d
 	pkgrel = 1
 	url = https://github.com/ijuttt/spiketrace
 	arch = x86_64
 	license = GPL-2.0-only
 	makedepends = go>=1.21
 	makedepends = git
-	provides = spiketrace=0.1.0
+	provides = spiketrace=v0.1.0.r0.g8ee524d
 	conflicts = spiketrace
 	backup = etc/spiketrace/config.toml
 	source = git+https://github.com/ijuttt/spiketrace.git
