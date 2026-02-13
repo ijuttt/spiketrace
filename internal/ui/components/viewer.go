@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ijuttt/spiketrace/internal/model"
 	"github.com/ijuttt/spiketrace/internal/ui/styles"
@@ -17,15 +19,31 @@ import (
 // -----------------------------------------------------------------------------
 
 const (
-	widthRank    = 3
-	widthPID     = 7
-	widthPPID    = 7
-	widthUID     = 6
-	widthState   = 2
-	widthPersist = 10
-	widthComm    = 8
-	widthRSS     = 8
-	widthCPU     = 6
+	widthRank     = 3
+	widthPID      = 7
+	widthPPID     = 7
+	widthUID      = 6
+	widthState    = 2
+	widthActivity = 10
+	widthComm     = 8
+	widthRSS      = 8
+	widthCPU      = 6
+)
+
+// Process state characters and their meanings (from Linux /proc/[pid]/stat).
+const (
+	procStateRunning = "R" // Running or runnable
+	procStateSleep   = "S" // Interruptible sleep (waiting for event)
+	procStateDisk    = "D" // Uninterruptible sleep (I/O, critical section)
+	procStateZombie  = "Z" // Zombie (terminated, waiting for parent)
+	procStateStopped = "T" // Stopped (by job control signal)
+	procStateIdle    = "I" // Idle kernel thread
+)
+
+// List identifiers for cursor navigation.
+const (
+	listCPU = 0 // Top by CPU
+	listRSS = 1 // Top by Memory
 )
 
 // Viewer displays process lists and detailed data.
@@ -39,6 +57,12 @@ type Viewer struct {
 	focused       bool
 	title         string
 	scrollY       int
+	selectedRow   int // cursor position within active list
+	activeList    int // listCPU or listRSS
+
+	// Detail overlay: shows full cmdline for a selected process.
+	detailProc *model.ProcessEntry
+	showDetail bool
 }
 
 // NewViewer creates a new data viewer.
@@ -46,6 +70,78 @@ func NewViewer() Viewer {
 	return Viewer{
 		title: "📊 Process View",
 	}
+}
+
+// activeProcs returns the process list for the currently active list.
+func (v *Viewer) activeProcs() []model.ProcessEntry {
+	if v.snapshot == nil {
+		return nil
+	}
+	if v.activeList == listRSS {
+		return v.snapshot.TopRSSProcs
+	}
+	return v.snapshot.Procs
+}
+
+// Update handles keyboard input for the viewer.
+func (v *Viewer) Update(msg tea.Msg) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		// Dismiss detail overlay first
+		if v.showDetail {
+			if msg.String() == "esc" {
+				v.HideProcessDetail()
+			}
+			return
+		}
+
+		procs := v.activeProcs()
+
+		switch {
+		case key.Matches(msg, keyUp):
+			if v.selectedRow > 0 {
+				v.selectedRow--
+			} else if v.activeList == listRSS {
+				// Jump to last row of CPU list
+				v.activeList = listCPU
+				cpuProcs := v.snapshot.Procs
+				if len(cpuProcs) > 0 {
+					v.selectedRow = len(cpuProcs) - 1
+				}
+			}
+		case key.Matches(msg, keyDown):
+			if procs != nil && v.selectedRow < len(procs)-1 {
+				v.selectedRow++
+			} else if v.activeList == listCPU && v.snapshot != nil && len(v.snapshot.TopRSSProcs) > 0 {
+				// Jump to first row of RSS list
+				v.activeList = listRSS
+				v.selectedRow = 0
+			}
+		default:
+			if msg.String() == "i" {
+				if procs != nil && v.selectedRow < len(procs) {
+					v.ShowProcessDetail(&procs[v.selectedRow])
+				}
+			}
+		}
+	}
+}
+
+// ShowProcessDetail opens the detail overlay for the given process.
+func (v *Viewer) ShowProcessDetail(proc *model.ProcessEntry) {
+	v.detailProc = proc
+	v.showDetail = true
+}
+
+// HideProcessDetail closes the detail overlay.
+func (v *Viewer) HideProcessDetail() {
+	v.detailProc = nil
+	v.showDetail = false
+}
+
+// IsDetailVisible returns whether the detail overlay is open.
+func (v *Viewer) IsDetailVisible() bool {
+	return v.showDetail
 }
 
 // SetState updates the viewer state with full dump context.
@@ -89,6 +185,12 @@ func (v Viewer) View() string {
 		return v.applyPanelStyle(b.String())
 	}
 
+	// Detail overlay takes precedence
+	if v.showDetail && v.detailProc != nil {
+		b.WriteString(v.renderProcessDetail())
+		return v.applyPanelStyle(b.String())
+	}
+
 	// Calculate available rows for process lists
 	// Overhead:
 	// - Top/Bottom Border: 2
@@ -114,6 +216,19 @@ func (v Viewer) View() string {
 	// Top by RSS
 	b.WriteString(v.renderProcessList("Top by Memory", v.snapshot.TopRSSProcs, true, rowsPerList))
 
+	// Legend line — explains process state codes and activity visualization
+	b.WriteString("\n")
+	legend := styles.DimItemStyle.Render(
+		"State: " +
+			styles.SuccessStyle.Render("R") + "=Running " +
+			styles.ValueStyle.Render("S") + "=Sleep (Wait) " +
+			styles.ErrorStyle.Render("D") + "=Disk (Stuck) " +
+			styles.HighlightValueStyle.Render("Z") + "=Zombie " +
+			styles.ValueStyle.Render("T") + "=Stopped " +
+			"  │  ACT: ▁-█=CPU% ░=absent",
+	)
+	b.WriteString(legend)
+
 	return v.applyPanelStyle(b.String())
 }
 
@@ -138,16 +253,17 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 	}
 
 	// Define columns with priority (1=highest, 5=lowest)
+	// Security-relevant columns (ppid, uid, state) are priority 1 — always visible.
 	columns := []columnPriority{
 		{"rank", widthRank, 1, true},
 		{"pid", widthPID, 1, true},
+		{"state", widthState, 1, true},
 		{"rss", widthRSS, 1, true},
 		{"cpu", widthCPU, 1, true},
-		{"comm", 8, 1, true}, // minimum width, will expand
-		{"state", widthState, 2, true},
+		{"comm", 8, 2, true}, // minimum width, will expand
+		{"ppid", widthPPID, 3, true},
 		{"uid", widthUID, 3, true},
-		{"ppid", widthPPID, 4, true},
-		{"persist", widthPersist, 5, true},
+		{"activity", widthActivity, 4, true},
 	}
 
 	availableWidth := v.width - 4 // Account for panel padding/borders
@@ -208,8 +324,8 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 
 	// Extract final widths and visibility
 	var (
-		wRank, wPID, wPPID, wUID, wState, wPersist, wComm, wRSS, wCPU                            int
-		showRank, showPID, showPPID, showUID, showState, showPersist, showComm, showRSS, showCPU bool
+		wRank, wPID, wPPID, wUID, wState, wActivity, wComm, wRSS, wCPU                            int
+		showRank, showPID, showPPID, showUID, showState, showActivity, showComm, showRSS, showCPU bool
 	)
 
 	for _, col := range columns {
@@ -224,8 +340,8 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 			wUID, showUID = col.width, col.visible
 		case "state":
 			wState, showState = col.width, col.visible
-		case "persist":
-			wPersist, showPersist = col.width, col.visible
+		case "activity":
+			wActivity, showActivity = col.width, col.visible
 		case "comm":
 			wComm, showComm = col.width, col.visible
 		case "rss":
@@ -252,8 +368,8 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 	if showState {
 		headerParts = append(headerParts, fmt.Sprintf("%-*s", wState, "S"))
 	}
-	if showPersist {
-		headerParts = append(headerParts, fmt.Sprintf("%-*s", wPersist, "HIST"))
+	if showActivity {
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", wActivity, "ACT"))
 	}
 	if showComm {
 		headerParts = append(headerParts, fmt.Sprintf("%-*s", wComm, "COMM"))
@@ -320,13 +436,14 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 			if stateStr == "" {
 				stateStr = "?"
 			}
-			state := styles.ValueStyle.Render(fmt.Sprintf("%*s", wState, stateStr))
+			stateStyle := stateColorStyle(stateStr)
+			state := stateStyle.Render(fmt.Sprintf("%*s", wState, stateStr))
 			lineParts = append(lineParts, state)
 		}
-		if showPersist {
-			persist := v.renderPersistence(p.PID)
-			persistStyled := styles.DimItemStyle.Render(fmt.Sprintf("%-*s", wPersist, persist))
-			lineParts = append(lineParts, persistStyled)
+		if showActivity {
+			activity := v.renderActivity(p.PID)
+			activityStyled := styles.DimItemStyle.Render(fmt.Sprintf("%-*s", wActivity, activity))
+			lineParts = append(lineParts, activityStyled)
 		}
 		if showComm {
 			comm := p.Comm
@@ -367,6 +484,18 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 		// Safety: Truncate to available width
 		line = truncateToWidth(line, availableWidth)
 
+		// Highlight the selected row when this list is active and viewer is focused
+		listID := listCPU
+		if byRSS {
+			listID = listRSS
+		}
+		isSelected := v.focused && v.activeList == listID && i == v.selectedRow
+		if isSelected {
+			line = styles.SelectedItemStyle.Render("▸" + line)
+		} else {
+			line = " " + line
+		}
+
 		b.WriteString(line)
 		if i < show-1 || truncated {
 			b.WriteString("\n")
@@ -375,6 +504,33 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 
 	if truncated {
 		b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf("  ... and %d more", count-show)))
+	}
+
+	// Synthetic "[others]" row for CPU list: shows hidden workload
+	if !byRSS && v.snapshot != nil {
+		sumCPU := 0.0
+		for _, p := range procs[:show] {
+			sumCPU += p.CPUPct
+		}
+		gap := v.snapshot.CPU.GlobalPct - sumCPU
+		if gap > 1.0 {
+			// Severity-based styling
+			var gapStyle lipgloss.Style
+			switch {
+			case gap > 50:
+				gapStyle = styles.ErrorStyle // Red — critical hidden load
+			case gap > 20:
+				gapStyle = styles.HighlightValueStyle // Pink — significant
+			case gap > 5:
+				gapStyle = lipgloss.NewStyle().Foreground(styles.ColorWarning).Bold(true) // Orange
+			default:
+				gapStyle = styles.MetricSecondaryStyle // Dim — minor
+			}
+			othersLine := fmt.Sprintf("  ─ [others]%*s%5.1f%%",
+				wComm+wActivity+wState+wPPID+wUID-3, "", gap)
+			b.WriteString("\n")
+			b.WriteString(gapStyle.Render(othersLine))
+		}
 	}
 
 	return b.String()
@@ -403,8 +559,30 @@ func (v Viewer) applyPanelStyle(content string) string {
 		Render(content)
 }
 
-// renderPersistence generates a visual history of the process across snapshots.
-func (v Viewer) renderPersistence(pid int32) string {
+// activityBlocks maps CPU percentage (0-100%) to Unicode block height.
+// Uses absolute scale: ▁ ≈ 0%, █ ≈ 100%.
+var activityBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+// absentBlock indicates the process was not in the top-N for that snapshot.
+const absentBlock = "░"
+
+// cpuToBlock converts a CPU percentage (0-100) to a sparkline block character.
+func cpuToBlock(cpuPct float64) string {
+	// Absolute scale: 0% → ▁, 100% → █
+	const maxLevels = 7 // index 0-7
+	idx := int(cpuPct / 100.0 * maxLevels)
+	if idx > maxLevels {
+		idx = maxLevels
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	return string(activityBlocks[idx])
+}
+
+// renderActivity generates a per-process CPU activity sparkline across snapshots.
+// Each position shows the process's CPU% as a block height (▁-█) or ░ if absent.
+func (v Viewer) renderActivity(pid int32) string {
 	if v.dump == nil {
 		return ""
 	}
@@ -412,46 +590,143 @@ func (v Viewer) renderPersistence(pid int32) string {
 	var b strings.Builder
 	b.WriteString("[")
 
-	// Show history for all snapshots, limited to widthPersist-2
-	maxDots := widthPersist - 2
+	// Show activity for all snapshots, limited to widthActivity-2 (brackets)
+	maxBlocks := widthActivity - 2
 	snapCount := len(v.dump.Snapshots)
 
-	startIdx := 0
-	if snapCount > maxDots {
-		// If too many snapshots, show window around current index or last N
-		// Simple approach: show last N
-		startIdx = snapCount - maxDots
+	// Snapshots are stored [Newest...Oldest] by the daemon.
+	// We want to display [Oldest...Newest] left-to-right to match the Info & Actions timeline.
+	endIdx := snapCount - 1 // oldest
+	startIdx := 0           // newest
+	if snapCount > maxBlocks {
+		// Show the most recent maxBlocks snapshots
+		startIdx = snapCount - maxBlocks
 	}
 
-	for i := startIdx; i < snapCount; i++ {
+	// Iterate BACKWARD (newest → oldest in array = oldest → newest visually)
+	for i := endIdx; i >= startIdx; i-- {
 		snap := &v.dump.Snapshots[i]
-		found := false
-		// Scan processes (simple linear search is fast enough for <1000 procs)
+		cpuPct := -1.0 // sentinel: not found
+
+		// Scan processes for this PID
 		for j := range snap.Procs {
 			if snap.Procs[j].PID == pid {
-				found = true
+				cpuPct = snap.Procs[j].CPUPct
 				break
 			}
 		}
 
-		if i == v.snapshotIdx {
-			// Highlight current snapshot
-			if found {
-				b.WriteString(styles.HighlightValueStyle.Render("●"))
+		isCurrent := i == v.snapshotIdx
+
+		if cpuPct < 0 {
+			// Process absent from this snapshot
+			if isCurrent {
+				b.WriteString(styles.HighlightValueStyle.Render(absentBlock))
 			} else {
-				// Should theoretically always be found if we are rendering it,
-				// unless this function is called for a PID not in current list (unlikely)
-				b.WriteString(styles.HighlightValueStyle.Render("○"))
+				b.WriteString(styles.MetricSecondaryStyle.Render(absentBlock))
 			}
 		} else {
-			if found {
-				b.WriteString(styles.MetricValueStyle.Render("●"))
+			block := cpuToBlock(cpuPct)
+			if isCurrent {
+				b.WriteString(styles.HighlightValueStyle.Render(block))
 			} else {
-				b.WriteString(styles.MetricSecondaryStyle.Render("○"))
+				b.WriteString(styles.MetricValueStyle.Render(block))
 			}
 		}
 	}
 
 	b.WriteString("]")
+	return b.String()
+}
+
+// stateColorStyle returns a lipgloss style that color-codes process state.
+// D (disk/uninterruptible) and Z (zombie) are operationally significant.
+func stateColorStyle(state string) lipgloss.Style {
+	switch state {
+	case procStateDisk:
+		return styles.ErrorStyle // Red — D-state signals I/O stall
+	case procStateZombie:
+		return styles.HighlightValueStyle // Orange — needs parent reap
+	case procStateRunning:
+		return styles.SuccessStyle // Green — actively running
+	default:
+		return styles.ValueStyle // Default for S, T, etc.
+	}
+}
+
+// renderProcessDetail renders a detail overlay for a single process.
+// Shows full cmdline and attribution data that won't fit in the table.
+func (v Viewer) renderProcessDetail() string {
+	p := v.detailProc
+
+	var b strings.Builder
+	b.WriteString(styles.SectionTitleStyle.Render("Process Detail"))
+	b.WriteString("\n\n")
+
+	// PID + State
+	b.WriteString(styles.LabelStyle.Render("PID:     "))
+	b.WriteString(styles.PIDStyle.Render(fmt.Sprintf("%d", p.PID)))
+	if p.State != "" {
+		b.WriteString("  ")
+		b.WriteString(stateColorStyle(p.State).Render(fmt.Sprintf("[%s]", p.State)))
+	}
+	b.WriteString("\n")
+
+	// PPID
+	b.WriteString(styles.LabelStyle.Render("PPID:    "))
+	b.WriteString(styles.ValueStyle.Render(fmt.Sprintf("%d", p.PPID)))
+	b.WriteString("\n")
+
+	// UID
+	b.WriteString(styles.LabelStyle.Render("UID:     "))
+	b.WriteString(styles.ValueStyle.Render(fmt.Sprintf("%d", p.UID)))
+	b.WriteString("\n")
+
+	// Comm
+	b.WriteString(styles.LabelStyle.Render("Comm:    "))
+	b.WriteString(styles.ProcessStyle.Render(p.Comm))
+	b.WriteString("\n")
+
+	// Full command line (the key data point that was never shown before)
+	b.WriteString(styles.LabelStyle.Render("Cmdline: "))
+	cmdline := p.Cmdline
+	if cmdline == "" {
+		cmdline = "(unavailable)"
+	}
+	// Word-wrap within available width
+	wrapWidth := v.width - 13 // 9 (label) + 4 (borders)
+	if wrapWidth < 20 {
+		wrapWidth = 20
+	}
+	b.WriteString(styles.HighlightValueStyle.Render(wrapLine(cmdline, wrapWidth)))
+	b.WriteString("\n\n")
+
+	// Metrics
+	b.WriteString(styles.LabelStyle.Render("CPU:     "))
+	b.WriteString(styles.MetricValueStyle.Render(fmt.Sprintf("%.1f%%", p.CPUPct)))
+	b.WriteString("\n")
+
+	b.WriteString(styles.LabelStyle.Render("RSS:     "))
+	b.WriteString(styles.MetricValueStyle.Render(fmt.Sprintf("%d MiB", p.GetRSSMiB())))
+	b.WriteString("\n\n")
+
+	b.WriteString(styles.DimItemStyle.Render("Press Esc to close"))
+
+	return b.String()
+}
+
+// wrapLine performs simple word-wrapping at the given width.
+func wrapLine(s string, width int) string {
+	if len(s) <= width {
+		return s
+	}
+
+	var b strings.Builder
+	for len(s) > width {
+		b.WriteString(s[:width])
+		b.WriteString("\n         ") // Align with "Cmdline: " prefix
+		s = s[width:]
+	}
+	b.WriteString(s)
 	return b.String()
 }

@@ -257,6 +257,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Update viewer when snapshot changes
 				a.viewer.SetState(a.trigger.Dump(), a.trigger.SnapshotIdx())
+			case PanelViewer:
+				a.viewer.Update(msg)
 			}
 		}
 
@@ -390,7 +392,7 @@ func (a App) renderHeader() string {
 	return title
 }
 
-// renderStatusBar renders the status bar.
+// renderStatusBar renders the status bar with panel-contextual keybinding hints.
 func (a App) renderStatusBar() string {
 	var left, right string
 
@@ -402,18 +404,43 @@ func (a App) renderStatusBar() string {
 		left = styles.DimItemStyle.Render(a.statusMsg)
 	}
 
-	// Keybinding hints
+	// Global hints (always shown)
 	hints := []string{
 		styles.HelpKeyStyle.Render("Tab") + styles.HelpDescStyle.Render(":panel"),
-		styles.HelpKeyStyle.Render("↑↓") + styles.HelpDescStyle.Render(":nav"),
-		styles.HelpKeyStyle.Render("Enter") + styles.HelpDescStyle.Render(":load"),
-		styles.HelpKeyStyle.Render("h/l") + styles.HelpDescStyle.Render(":snap"),
-		styles.HelpKeyStyle.Render("m") + styles.HelpDescStyle.Render(":mem"),
-		styles.HelpKeyStyle.Render("d") + styles.HelpDescStyle.Render(":del"),
-		styles.HelpKeyStyle.Render("D") + styles.HelpDescStyle.Render(":delAll"),
-		styles.HelpKeyStyle.Render("r") + styles.HelpDescStyle.Render(":refresh"),
 		styles.HelpKeyStyle.Render("q") + styles.HelpDescStyle.Render(":quit"),
 	}
+
+	// Panel-specific hints
+	switch a.activePanel {
+	case PanelExplorer:
+		hints = append(hints,
+			styles.HelpKeyStyle.Render("↑↓")+styles.HelpDescStyle.Render(":nav"),
+			styles.HelpKeyStyle.Render("Enter")+styles.HelpDescStyle.Render(":load"),
+			styles.HelpKeyStyle.Render("d")+styles.HelpDescStyle.Render(":del"),
+			styles.HelpKeyStyle.Render("D")+styles.HelpDescStyle.Render(":delAll"),
+			styles.HelpKeyStyle.Render("r")+styles.HelpDescStyle.Render(":refresh"),
+		)
+	case PanelTrigger:
+		hints = append(hints,
+			styles.HelpKeyStyle.Render("h/l")+styles.HelpDescStyle.Render(":snap"),
+			styles.HelpKeyStyle.Render("g/G")+styles.HelpDescStyle.Render(":first/last"),
+			styles.HelpKeyStyle.Render("0")+styles.HelpDescStyle.Render(":trigger"),
+			styles.HelpKeyStyle.Render("o")+styles.HelpDescStyle.Render(":origin"),
+			styles.HelpKeyStyle.Render("m")+styles.HelpDescStyle.Render(":mem"),
+		)
+	case PanelViewer:
+		if a.viewer.IsDetailVisible() {
+			hints = append(hints,
+				styles.HelpKeyStyle.Render("Esc")+styles.HelpDescStyle.Render(":close"),
+			)
+		} else {
+			hints = append(hints,
+				styles.HelpKeyStyle.Render("↑↓")+styles.HelpDescStyle.Render(":select"),
+				styles.HelpKeyStyle.Render("i")+styles.HelpDescStyle.Render(":inspect"),
+			)
+		}
+	}
+
 	right = strings.Join(hints, "  ")
 
 	// Pad to fill width
