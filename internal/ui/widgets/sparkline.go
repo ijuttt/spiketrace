@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ijuttt/spiketrace/internal/ui/styles"
 )
 
 // Sparkline renders a time-series as a Unicode bar chart.
@@ -28,8 +29,8 @@ func NewSparkline(data []float64, width int) Sparkline {
 		Data:           data,
 		Width:          width,
 		HighlightIndex: -1,
-		NormalColor:    lipgloss.Color("62"),  // Blue
-		HighlightColor: lipgloss.Color("196"), // Red
+		NormalColor:    styles.ColorPrimary, // Cyan
+		HighlightColor: styles.ColorAccent,  // Hot Pink
 	}
 }
 

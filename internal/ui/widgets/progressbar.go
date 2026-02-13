@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ijuttt/spiketrace/internal/ui/styles"
 )
 
 // ProgressBar renders a horizontal bar with optional baseline marker.
@@ -27,9 +28,9 @@ func NewProgressBar(value float64, width int) ProgressBar {
 		Value:       value,
 		MaxValue:    100,
 		Width:       width,
-		FilledColor: lipgloss.Color("62"),  // Blue
-		EmptyColor:  lipgloss.Color("240"), // Dark gray
-		DeltaColor:  lipgloss.Color("214"), // Orange
+		FilledColor: styles.ColorPrimary,  // Cyan
+		EmptyColor:  styles.ColorDarkGray, // Dark gray
+		DeltaColor:  styles.ColorWarning,  // Orange
 	}
 }
 
@@ -56,13 +57,13 @@ func (p ProgressBar) Render() string {
 	filledColor := p.FilledColor
 	ratio := p.Value / p.MaxValue
 	if ratio > 0.9 {
-		filledColor = lipgloss.Color("196") // Red - critical
+		filledColor = styles.ColorDanger // Red - critical
 	} else if ratio > 0.7 {
-		filledColor = lipgloss.Color("214") // Orange - warning
+		filledColor = styles.ColorWarning // Orange - warning
 	} else if ratio > 0.5 {
-		filledColor = lipgloss.Color("226") // Yellow - moderate
+		filledColor = styles.ColorYellow // Yellow - moderate
 	} else {
-		filledColor = lipgloss.Color("42") // Green - healthy
+		filledColor = styles.ColorSuccess // Neon Green - healthy
 	}
 
 	filledStyle := lipgloss.NewStyle().Foreground(filledColor)
