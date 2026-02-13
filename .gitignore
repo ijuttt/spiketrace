@@ -17,7 +17,7 @@ vendor/
 *.prof
 
 # --- C/LSP Tooling
-.clangd/
+.clangd
 .cache/
 compile_commands.json
 .gcc-flags.json
