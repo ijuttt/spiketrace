@@ -1,23 +1,35 @@
-# Binaries
+# --- Build Artifacts
 build/
+bin/
 *.o
-/spiketrace
-/spiketrace-view
-/spiketrace-view-cli
-
-# Artifacts
 *.d
 *.so
 *.a
 *.out
-compile_commands.json
+# Ignore binaries if they end up in root
+/spiketrace
+/spiketrace-view
+/spiketrace-view-cli
 
-# Go
+# --- Go Specifics
 vendor/
-.clangd
+*.test
+*.prof
 
-# Experimental code
-experimental/
+# --- C/LSP Tooling
+.clangd/
+.cache/
+compile_commands.json
+.gcc-flags.json
 
-# Cache
-.cache
+# --- Editors & OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Spiketrace Specific
+*.log
+*.dump
+man/spiketrace.1
+man/spiketrace-view.1
