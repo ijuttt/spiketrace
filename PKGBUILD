@@ -1,7 +1,7 @@
 # Maintainer: ijuttt <zzudin.email@gmail.com>
 # Contributor: Falint <kafkaxz2234@gmail.com>
 pkgname=spiketrace-git
-pkgver=0.1.0
+pkgver=v0.1.0.r0.g8ee524d
 pkgrel=1
 pkgdesc="A system resources spike detection and tracing tool for anomaly processes detection"
 arch=('x86_64')
@@ -19,6 +19,12 @@ pkgver() {
     cd "spiketrace"
     git describe --long --tags 2>/dev/null | sed 's/\([^-]*-g\)/r\1/;s/-/./g' ||
     printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+prepare() {
+    cd "spiketrace"
+    # Ensure vendor is consistent (defense against stale vendor/)
+    go mod verify
 }
 
 build() {

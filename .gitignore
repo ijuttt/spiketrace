@@ -12,7 +12,7 @@ bin/
 /spiketrace-view-cli
 
 # --- Go Specifics
-vendor/
+# vendor/ (tracked for offline builds)
 *.test
 *.prof
 
