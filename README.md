@@ -1,33 +1,43 @@
+<div align="center">
+
 # spiketrace
+<p >
+  <img src="https://img.shields.io/github/commit-activity/m/ijuttt/spiketrace?style=for-the-badge" />
+  <img src="https://img.shields.io/github/last-commit/ijuttt/spiketrace?style=for-the-badge" />
+  <img src="https://img.shields.io/github/license/ijuttt/spiketrace?style=for-the-badge" />
+  <img src="https://img.shields.io/github/stars/ijuttt/spiketrace?style=for-the-badge" />
+</p>
 
 Lightweight C daemon for Linux capturing snapshots of short resource spikes for performance troubleshooting and security anomaly detection.
 
-![spiketrace demo](assets/demo.mp4)
+https://github.com/user-attachments/assets/2f1f8996-c6a8-4c83-a112-04828dbbdb95
 
-<p align="center">
-  <a href="#why-spiketrace">Why?</a> •
-  <a href="#how-it-works">How it Works</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#running-the-service">Running</a> •
-  <a href="#notifications--integrations">Integrations</a> •
-  <a href="#interactive-analysis-tui">TUI View</a> •
-  <a href="#configuration">Config</a> •
-  <a href="#file-locations">Locations</a> •
-  <a href="#uninstall">Uninstall</a> •
-  <a href="#limitations">Limitations</a>
-</p>
+<br>
+
+<a href="#why-spiketrace">Why</a> |
+<a href="#how-it-works">How It Works</a> |
+<a href="#installation">Installation</a> |
+<a href="#running-the-service">Running</a> |
+<a href="#notifications--integrations">Integrations</a> |
+<a href="#interactive-analysis-tui">TUI</a> |
+<a href="#configuration">Configuration</a> |
+<a href="#file-locations">Locations</a> |
+<a href="#uninstall">Uninstall</a> |
+<a href="#limitations">Limitations</a>
+
+</div>
 
 ---
 
 ## Why spiketrace?
 
-Modern Linux systems are noisy and ephemeral. Traditional monitoring stacks (Prometheus, APM) often miss **short-lived spikes** that happen between scraping intervals. `spiketrace` acts as an automated **"dashcam"** for your system—sampling at high resolution (1s) in a memory ring buffer but only persisting data to disk when it detects an "accident" (spike).
+Modern Linux systems are noisy and ephemeral. Most monitoring stacks are too heavy to run at high resolution continuously and still miss **short-lived spikes**. `spiketrace` records them efficiently, persisting data only when thresholds trigger.
 
 ### The Approach
 - **Minimalist & Fast**: A small C daemon with a predictable footprint and no database or agent cluster required.
 - **Gap-Filler**: Catches ephemeral behavior (like malware or runaway scripts) that disappears before a traditional agent can register it.
 - **Context-Aware**: Always includes historical snapshots from *before* the trigger fired to explain the "how it started."
-- **Operationally Simple**: No complex stack or SaaS; just high-resolution JSON dumps and a TUI viewer.
+- **Operationally Simple**: No complex stack or SaaS; just a JSON dumps and a TUI viewer.
 
 **Unlike [atop](https://github.com/Atoptool/atop) or [htop](https://github.com/htop-dev/htop)**: While those tools are excellent for live monitoring or continuous logging, `spiketrace` is purpose-built to capture forensic-level detail of the brief, rare moments that traditional tools average out or miss entirely.
 
