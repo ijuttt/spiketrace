@@ -2,23 +2,45 @@
 
 Lightweight C daemon for Linux capturing snapshots of short resource spikes for performance troubleshooting and security anomaly detection.
 
-## Use Cases
+![spiketrace demo](assets/demo.mp4)
 
-### Performance Troubleshooting
-- Capture what caused that mysterious 2-second fan spin-up
-- Identify runaway processes before they disappear
-- Debug intermittent slowdowns with historical context
+<p align="center">
+  <a href="#why-spiketrace">Why?</a> •
+  <a href="#how-it-works">How it Works</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#running-the-service">Running</a> •
+  <a href="#notifications--integrations">Integrations</a> •
+  <a href="#interactive-analysis-tui">TUI View</a> •
+  <a href="#configuration">Config</a> •
+  <a href="#file-locations">Locations</a> •
+  <a href="#uninstall">Uninstall</a> •
+  <a href="#limitations">Limitations</a>
+</p>
 
-### Security & Threat Detection
-- **Crypto miner detection**: Catch mining malware that spikes CPU then hides
-- **Suspicious process spawns**: Alert on new processes consuming unusual resources
-- **Memory anomalies**: Detect payload injection or memory-hungry backdoors
-- **Compromised server forensics**: Review system state *before* an incident
+---
 
-### System Administration
-- Post-mortem analysis of transient issues
-- Baseline deviation monitoring
-- Resource abuse detection in shared environments
+## Why spiketrace?
+
+Modern Linux systems are noisy and ephemeral. Traditional monitoring stacks (Prometheus, APM) often miss **short-lived spikes** that happen between scraping intervals. `spiketrace` acts as an automated **"dashcam"** for your system—sampling at high resolution (1s) in a memory ring buffer but only persisting data to disk when it detects an "accident" (spike).
+
+### The Approach
+- **Minimalist & Fast**: A small C daemon with a predictable footprint and no database or agent cluster required.
+- **Gap-Filler**: Catches ephemeral behavior (like malware or runaway scripts) that disappears before a traditional agent can register it.
+- **Context-Aware**: Always includes historical snapshots from *before* the trigger fired to explain the "how it started."
+- **Operationally Simple**: No complex stack or SaaS; just high-resolution JSON dumps and a TUI viewer.
+
+**Unlike [atop](https://github.com/Atoptool/atop) or [htop](https://github.com/htop-dev/htop)**: While those tools are excellent for live monitoring or continuous logging, `spiketrace` is purpose-built to capture forensic-level detail of the brief, rare moments that traditional tools average out or miss entirely.
+
+### Key Use Cases
+- **Performance**: Capture that mysterious fan spin-up or intermittent slowdown.
+- **Security**: Identify suspicious short-lived processes or sudden memory anomalies.
+- **Forensics**: Review system state exactly as it was *seconds before* an incident.
+
+> **Caught a spike you can't explain or reproduce? spiketrace is built for exactly that.**
+
+
+<details>
+<summary><b>How It Works</b></summary>
 
 ## How It Works
 
@@ -36,8 +58,10 @@ Lightweight C daemon for Linux capturing snapshots of short resource spikes for 
 4. **JSON Persistence**: Atomically writes 10 recent snapshots on trigger
 5. **Viewers**: Interactive TUI (Go) and legacy CLI (C) for inspecting dumps
 
+</details>
+
 ## Installation
-**Requirements**: GCC (C99+), pthreads, Go 1.21+ (for TUI), make.
+**Build Requirements**: GCC, Go 1.21+, and Make.
 
 ```bash
 git clone https://github.com/ijuttt/spiketrace.git
@@ -50,23 +74,15 @@ sudo make install       # install to /usr/local
 sudo cp build/spiketrace.service /etc/systemd/system/
 ```
 
-For a distro-compliant install (installing to `/usr` and including systemd units):
-```bash
-sudo make PREFIX=/usr install
-```
-
 ## Running the Service
 
 ### Systemd (Recommended)
 ```bash
-sudo systemctl enable --now spiketrace   # enable and start
-sudo systemctl status spiketrace         # check status
-journalctl -u spiketrace -f              # view logs
-```
+# Start the service and enable it on boot
+sudo systemctl enable --now spiketrace
 
-To reload configuration without restarting:
-```bash
-sudo systemctl reload spiketrace
+# Watch logs (where spikes and triggers are reported)
+journalctl -u spiketrace -f
 ```
 
 ### Manual Execution
@@ -74,13 +90,28 @@ sudo systemctl reload spiketrace
 sudo spiketrace
 ```
 
-### ⚠️ Non-Root Access (Important)
+###  Non-Root Access (Important)
 The daemon runs as `root` to read system usage, but dump files are group-owned by `spiketrace`. To allow a regular user to read dumps and use the viewer:
 
 ```bash
 sudo usermod -aG spiketrace $USER
 # You must log out and log back in for this to take effect
 ```
+
+
+<details>
+<summary><b>Notifications & Integrations</b></summary>
+
+### Notifications & Integrations
+
+`spiketrace` is designed to be integration-friendly. Since it writes standard JSON files to `/var/lib/spiketrace`, you can easily hook it into your own notification system.
+
+**Ideas for integrations:**
+- Use **Systemd Path Units** (recommended) to trigger a script whenever a new dump is created.
+- Watch filenames for specific triggers (e.g., `spike_cpu_*.json`) to send alerts to Telegram/Discord.
+- Sync the dump directory to a central server for cross-system forensics.
+
+</details>
 
 ## Interactive Analysis (TUI)
 
@@ -114,8 +145,10 @@ spiketrace-view-cli /var/lib/spiketrace/spike_*.json
 
 ## Configuration
 
-**Location**: `/etc/spiketrace/config.toml`  
-**Example**: `/usr/share/doc/spiketrace/config.toml.example`
+**System Config**: `/etc/spiketrace/config.toml` (Edit this file to customize behavior)  
+**Default Reference**: `[examples/config.toml](examples/config.toml)`
+
+> **Note**: Tune these detection thresholds to match your system's baseline and avoid false alarms according to your needs.
 
 <details>
 <summary><strong>Click to view full configuration reference</strong></summary>
@@ -180,13 +213,21 @@ sudo groupdel spiketrace
 ```
 
 
+<details>
+<summary><b>Limitations</b></summary>
 
 ## Limitations
 
-- **1-second granularity**: Very short spikes (<1s) may be partially missed
-- **Attribution, not causation**: Shows *which* process spiked, not *why*
-- **CPU/RAM/Swap only**: No network or disk I/O monitoring
-- **Top 10 processes**: Per snapshot, by CPU and by RSS
+- **Sampling Trade-off**: High-resolution sampling (sub-second) is supported via configuration but will increase daemon CPU usage.
+- **Attribution, not causation**: Identifies the spiking process, but does not provide internal stack traces or application-level profiling.
+- **Metrics Scope**: Currently limited to CPU, RAM, and Swap. (Network and Disk I/O monitoring are on the development roadmap).
+- **Snapshot Depth**: Each snapshot stores the "Top N" resource-consuming processes to keep dump files small and efficient.
 
-## License
+</details>
+
+<details>
+<summary><b>License</b></summary>
+
 This project is licensed under the GPL-2.0 License - see the [LICENSE](LICENSE) file for details.
+
+</details>
