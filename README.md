@@ -37,15 +37,6 @@ Lightweight C daemon for Linux capturing snapshots of short resource spikes for 
 5. **Viewers**: Interactive TUI (Go) and legacy CLI (C) for inspecting dumps
 
 ## Installation
-
-### Arch Linux (AUR)
-A generic PKGBUILD is provided. If using an AUR helper:
-
-```bash
-yay -S spiketrace-git
-```
-
-### Manual Build
 **Requirements**: GCC (C99+), pthreads, Go 1.21+ (for TUI), make.
 
 ```bash
