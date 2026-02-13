@@ -26,6 +26,8 @@ const (
 	minTimelineWidth    = 20
 	minProgressBarWidth = 10
 	widthLabel          = 10 // Fixed width for metadata labels
+	ioWaitWarningPct    = 20.0
+	ioWaitCriticalPct   = 50.0
 )
 
 // Action buttons
@@ -71,6 +73,7 @@ type Trigger struct {
 	// Cached timeline data
 	cpuTimeline analysis.Timeline
 	memTimeline analysis.Timeline
+	ioTimeline  analysis.Timeline
 
 	// Action state
 	activeAction int
@@ -102,10 +105,11 @@ func (t *Trigger) SetSelectedFile(file *processor.FileInfo) {
 func (t *Trigger) SetDump(dump *model.SpikeDump) {
 	t.dump = dump
 	t.snapshotIdx = 0
-	// Build timeline on load
+	// Build timelines on load
 	if dump != nil {
 		t.cpuTimeline = analysis.BuildCPUTimeline(dump)
 		t.memTimeline = analysis.BuildMemoryTimeline(dump)
+		t.ioTimeline = analysis.BuildIoWaitTimeline(dump)
 	}
 }
 
@@ -205,6 +209,14 @@ func (t *Trigger) Update(msg tea.Msg) tea.Cmd {
 		// Toggle memory detail
 		case msg.String() == "m":
 			t.showMemoryDetail = !t.showMemoryDetail
+		// Jump to origin snapshot (schema v4+)
+		case msg.String() == "o":
+			if t.dump != nil {
+				idx := t.dump.Trigger.OriginSnapshotIndex
+				if idx >= 0 && idx < len(t.dump.Snapshots) {
+					t.snapshotIdx = idx
+				}
+			}
 		}
 	}
 	return nil
@@ -296,6 +308,7 @@ func (t Trigger) renderFileInfo() string {
 	if t.dump != nil {
 		b.WriteString("\n")
 		b.WriteString(styles.SuccessStyle.Render("✓ Loaded"))
+		b.WriteString(styles.MetricSecondaryStyle.Render(fmt.Sprintf(" (schema v%d)", t.dump.SchemaVersion)))
 		// Show uptime if available
 		if t.dump.UptimeSeconds > 0 {
 			b.WriteString("\n")
@@ -419,6 +432,29 @@ func (t Trigger) renderTrigger() string {
 		}
 	}
 
+	// Trigger policy (schema v4+)
+	if tr.Policy.Scope != "" {
+		b.WriteString("\n")
+		b.WriteString(styles.LabelStyle.Render(fmt.Sprintf("%-*s", widthLabel, "Scope: ")))
+		b.WriteString(styles.ValueStyle.Render(tr.Policy.Scope))
+		if tr.Policy.ScopeKey > 0 {
+			b.WriteString(styles.DimItemStyle.Render(fmt.Sprintf(" (key=%d)", tr.Policy.ScopeKey)))
+		}
+		if tr.Policy.Description != "" {
+			b.WriteString("\n")
+			b.WriteString(strings.Repeat(" ", widthLabel))
+			b.WriteString(styles.DimItemStyle.Render(tr.Policy.Description))
+		}
+	}
+
+	// Origin tracking (schema v4+)
+	if tr.OriginSnapshotIndex >= 0 && tr.OriginSnapshotIndex < len(t.cpuTimeline.Points) {
+		originOffset := t.cpuTimeline.Points[tr.OriginSnapshotIndex].OffsetSeconds
+		b.WriteString("\n")
+		b.WriteString(styles.LabelStyle.Render(fmt.Sprintf("%-*s", widthLabel, "Origin: ")))
+		b.WriteString(styles.MetricSecondaryStyle.Render(fmt.Sprintf("Snap %d (T%.0fs)", tr.OriginSnapshotIndex+1, originOffset)))
+	}
+
 	return b.String()
 }
 
@@ -467,6 +503,19 @@ func (t Trigger) renderTimeline() string {
 		memSpark := widgets.NewSparkline(memValues, timelineWidth).
 			WithHighlight(visualHighlightIdx)
 		b.WriteString(memSpark.Render())
+		b.WriteString("\n")
+	}
+
+	// Render I/O Wait sparkline (schema v5+)
+	if len(t.ioTimeline.Points) > 0 && t.ioTimeline.MaxValue > 0 {
+		ioValues := make([]float64, count)
+		for i, p := range t.ioTimeline.Points {
+			ioValues[count-1-i] = p.Value
+		}
+		b.WriteString(styles.MetricSecondaryStyle.Render("I/O "))
+		ioSpark := widgets.NewSparkline(ioValues, timelineWidth).
+			WithHighlight(visualHighlightIdx)
+		b.WriteString(ioSpark.Render())
 		b.WriteString("\n")
 	}
 
@@ -609,15 +658,19 @@ func (t Trigger) renderCPU(c *model.CPUSnapshot) string {
 		b.WriteString(styles.MetricSecondaryStyle.Render(fmt.Sprintf(" (%d cores)", len(c.PerCorePct))))
 	}
 
-	// I/O wait (schema v5)
-	if c.IoWaitPct > 0 {
-		b.WriteString("\n")
-		b.WriteString(styles.MetricLabelStyle.Render(fmt.Sprintf("%-*s", widthLabel, "I/O Wait")))
-		ioBar := widgets.NewProgressBar(c.IoWaitPct, progressBarWidth)
-		b.WriteString(ioBar.Render())
-		b.WriteString(" ")
-		b.WriteString(styles.MetricValueStyle.Render(fmt.Sprintf("%.1f%%", c.IoWaitPct)))
+	// I/O wait — always visible for operational awareness (schema v5+)
+	b.WriteString("\n")
+	b.WriteString(styles.MetricLabelStyle.Render(fmt.Sprintf("%-*s", widthLabel, "I/O Wait")))
+	ioBar := widgets.NewProgressBar(c.IoWaitPct, progressBarWidth)
+	b.WriteString(ioBar.Render())
+	b.WriteString(" ")
+	ioStyle := styles.MetricValueStyle
+	if c.IoWaitPct > ioWaitCriticalPct {
+		ioStyle = styles.ErrorStyle
+	} else if c.IoWaitPct > ioWaitWarningPct {
+		ioStyle = styles.HighlightValueStyle
 	}
+	b.WriteString(ioStyle.Render(fmt.Sprintf("%.1f%%", c.IoWaitPct)))
 
 	return b.String()
 }
