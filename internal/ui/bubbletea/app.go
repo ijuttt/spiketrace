@@ -388,7 +388,7 @@ func (a *App) updateFocus() {
 
 // renderHeader renders the application header.
 func (a App) renderHeader() string {
-	title := styles.PanelTitleStyle.Render("⚡ Spiketrace Viewer")
+	title := styles.PanelTitleStyle.Render("Spiketrace Viewer")
 	return title
 }
 

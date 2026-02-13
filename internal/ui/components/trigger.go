@@ -91,7 +91,7 @@ type Trigger struct {
 // NewTrigger creates a new trigger panel.
 func NewTrigger() Trigger {
 	return Trigger{
-		title:        "📋 Info & Actions",
+		title:        "Info & Actions",
 		activeAction: ActionLoad,
 	}
 }
@@ -227,9 +227,8 @@ func (t Trigger) View() string {
 	var b strings.Builder
 
 	// Title
-	title := styles.PanelTitleStyle.Render(t.title)
-	b.WriteString(title)
-	b.WriteString("\n\n")
+	// Title removed, handled by border
+	b.WriteString("\n")
 
 	// Show file metadata if file is selected
 	if t.selectedFile != nil {
@@ -757,12 +756,18 @@ func formatUptime(seconds float64) string {
 
 // applyPanelStyle applies the appropriate panel style.
 func (t Trigger) applyPanelStyle(content string) string {
-	style := styles.BasePanelStyle
+	baseStyle := styles.BasePanelStyle
 	if t.focused {
-		style = styles.ActivePanelStyle
+		baseStyle = styles.ActivePanelStyle
 	}
 
-	return style.
+	border, hasTop, _, _, _ := baseStyle.GetBorder()
+	if hasTop {
+		border = styles.BuildTitledBorder(t.title, t.width, border)
+		baseStyle = baseStyle.BorderStyle(border)
+	}
+
+	return baseStyle.
 		Width(t.width).
 		Height(t.height).
 		Render(content)

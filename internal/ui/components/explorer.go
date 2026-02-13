@@ -49,7 +49,7 @@ func NewExplorer() Explorer {
 	return Explorer{
 		files:     []processor.FileInfo{},
 		cursor:    0,
-		title:     "📂 File Explorer",
+		title:     "File Explorer",
 		emptyText: "No files found",
 	}
 }
@@ -122,10 +122,8 @@ func (e Explorer) View() string {
 	var b strings.Builder
 
 	// Title with file count
-	titleText := fmt.Sprintf("%s (%d)", e.title, len(e.files))
-	title := styles.PanelTitleStyle.Render(titleText)
-	b.WriteString(title)
-	b.WriteString("\n\n")
+	// Title removed, handled by border
+	b.WriteString("\n")
 
 	if len(e.files) == 0 {
 		b.WriteString(styles.DimItemStyle.Render(e.emptyText))
@@ -133,9 +131,9 @@ func (e Explorer) View() string {
 	}
 
 	// Calculate visible range
-	visibleHeight := e.height - 5 // Account for title and padding
+	visibleHeight := e.height - 4 // Account for border and padding
 	if visibleHeight < 1 {
-		visibleHeight = 5
+		visibleHeight = 1
 	}
 
 	start := 0
@@ -183,12 +181,21 @@ func (e Explorer) View() string {
 
 // applyPanelStyle applies the appropriate panel style.
 func (e Explorer) applyPanelStyle(content string) string {
-	style := styles.BasePanelStyle
+	baseStyle := styles.BasePanelStyle
 	if e.focused {
-		style = styles.ActivePanelStyle
+		baseStyle = styles.ActivePanelStyle
 	}
 
-	return style.
+	// Dynamic title with file count
+	titleText := fmt.Sprintf("%s (%d)", e.title, len(e.files))
+
+	border, hasTop, _, _, _ := baseStyle.GetBorder()
+	if hasTop {
+		border = styles.BuildTitledBorder(titleText, e.width, border)
+		baseStyle = baseStyle.BorderStyle(border)
+	}
+
+	return baseStyle.
 		Width(e.width).
 		Height(e.height).
 		Render(content)

@@ -55,7 +55,6 @@ type Viewer struct {
 	width         int
 	height        int
 	focused       bool
-	title         string
 	scrollY       int
 	selectedRow   int // cursor position within active list
 	activeList    int // listCPU or listRSS
@@ -67,9 +66,7 @@ type Viewer struct {
 
 // NewViewer creates a new data viewer.
 func NewViewer() Viewer {
-	return Viewer{
-		title: "📊 Process View",
-	}
+	return Viewer{}
 }
 
 // activeProcs returns the process list for the currently active list.
@@ -175,10 +172,8 @@ func (v *Viewer) SetFocused(focused bool) {
 func (v Viewer) View() string {
 	var b strings.Builder
 
-	// Title
-	title := styles.PanelTitleStyle.Render(v.title)
-	b.WriteString(title)
-	b.WriteString("\n\n")
+	// Title removed, using border title instead
+	b.WriteString("\n")
 
 	if v.snapshot == nil {
 		b.WriteString(styles.DimItemStyle.Render("Select a file to view data"))
@@ -194,16 +189,16 @@ func (v Viewer) View() string {
 	// Calculate available rows for process lists
 	// Overhead:
 	// - Top/Bottom Border: 2
-	// - Panel Title + blank: 2
+	// - Panel Title removed (merged into border), just 1 blank line
 	// - CPU List Header (Title + Headers + blank): 3
 	// - Spacer: 1
 	// - Mem List Header (Title + Headers + blank): 3
-	// Total Overhead inside panel: 9 lines (plus borders handled by style)
+	// Total Overhead inside panel: 8 lines (plus borders handled by style)
 	// We subtract an extra 1 safety margin.
-	// Total overhead: ~10 lines
+	// Total overhead: ~9 lines
 
 	innerHeight := v.height - 2 // Remove borders
-	availableRows := innerHeight - 11
+	availableRows := innerHeight - 10
 	rowsPerList := availableRows / 2
 	if rowsPerList < 1 {
 		rowsPerList = 1
@@ -548,12 +543,22 @@ func truncateToWidth(s string, maxWidth int) string {
 
 // applyPanelStyle applies the appropriate panel style.
 func (v Viewer) applyPanelStyle(content string) string {
-	style := styles.BasePanelStyle
+	baseStyle := styles.BasePanelStyle
 	if v.focused {
-		style = styles.ActivePanelStyle
+		baseStyle = styles.ActivePanelStyle
 	}
 
-	return style.
+	// Extract the border currently set on the style so we can inject the title.
+	border, hasTop, hasRight, hasBottom, hasLeft := baseStyle.GetBorder()
+	_ = hasRight
+	_ = hasBottom
+	_ = hasLeft
+	if hasTop {
+		border = styles.BuildTitledBorder("Process View", v.width, border)
+		baseStyle = baseStyle.BorderStyle(border)
+	}
+
+	return baseStyle.
 		Width(v.width).
 		Height(v.height).
 		Render(content)
