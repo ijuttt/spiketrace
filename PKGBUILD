@@ -10,7 +10,7 @@ license=('GPL-2.0-only')
 depends=('glibc')
 makedepends=('go>=1.21' 'git' 'gcc' 'make')
 optdepends=('systemd: for running as a service')
-provides=('spiketrace')
+provides=("spiketrace=${pkgver}")
 conflicts=('spiketrace')
 install=spiketrace.install
 source=("git+https://github.com/ijuttt/spiketrace.git")
@@ -26,11 +26,13 @@ pkgver() {
 build() {
     cd "spiketrace"
     
+    export CGO_CPPFLAGS="${CPPFLAGS}"
     export CGO_CFLAGS="${CFLAGS}"
+    export CGO_CXXFLAGS="${CXXFLAGS}"
     export CGO_LDFLAGS="${LDFLAGS}"
-    export GOFLAGS="-buildmode=pie -trimpath -mod=vendor"
     
-    make
+    # Explicitly override VERSION to ensure consistency (works for stable and -git)
+    make VERSION="${pkgver}"
 }
 
 package() {

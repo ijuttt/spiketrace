@@ -15,10 +15,14 @@ import (
 )
 
 func main() {
-	// Handle help flag
+	// Handle help and version flags
 	if len(os.Args) >= 2 {
-		if os.Args[1] == "-h" || os.Args[1] == "--help" {
+		switch os.Args[1] {
+		case "-h", "--help":
 			printUsage()
+			os.Exit(0)
+		case "-v", "--version":
+			fmt.Printf("spiketrace-view %s\n", Version)
 			os.Exit(0)
 		}
 	}

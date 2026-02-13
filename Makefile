@@ -20,14 +20,31 @@ STATEDIR ?= /var/lib/spiketrace
 SYSTEMDDIR ?= /usr/lib/systemd
 TMPFILESDIR ?= /usr/lib/tmpfiles.d
 
+# -----------------------------------------------------------------------------
+# Version Management
+# -----------------------------------------------------------------------------
+
+# Prioritize: CLI override -> git tags -> VERSION file -> dev
+VERSION ?= $(shell git describe --tags --always --dirty --match=v* 2>/dev/null || cat VERSION 2>/dev/null || echo "dev")
+# Strip leading 'v' for C and Go compatibility (e.g. v0.1.0 -> 0.1.0)
+VERSION_BARE := $(VERSION:v%=%)
+
+# -----------------------------------------------------------------------------
+# Build Configuration
+# -----------------------------------------------------------------------------
+
 # Project-specific compiler flags (appended to allow distro overrides)
 # Environment CFLAGS/LDFLAGS are respected and prepended
 PROJ_CFLAGS = -Wall -Wextra -Iinclude -MMD -MP
 PROJ_LDFLAGS = -lpthread
 
-# Build-time path defines (enables distro-specific path configuration)
+# Build-time path defines and Version Injection
 PROJ_CFLAGS += -DCONFIG_SYSTEM_PATH='"$(SYSCONFDIR)/spiketrace/config.toml"'
 PROJ_CFLAGS += -DSPIKE_DUMP_DEFAULT_DIR='"$(STATEDIR)"'
+PROJ_CFLAGS += -DSPIKETRACE_VERSION='"$(VERSION_BARE)"'
+
+# Go linker flags for version injection
+GO_LDFLAGS = -X main.Version=$(VERSION_BARE) -linkmode=external
 
 # Project Structure
 SRC_DIR = src
@@ -54,11 +71,14 @@ VIEWER_OUT = $(BUILD_DIR)/spiketrace-view-cli
 # TUI Viewer (New Default)
 TUI_OUT = $(BUILD_DIR)/spiketrace-view
 
+# Man Pages
+MAN_PAGES = man/spiketrace.1 man/spiketrace-view.1
+
 # -----------------------------------------------------------------------------
 # Build Targets
 # -----------------------------------------------------------------------------
 
-all: $(DAEMON_OUT) $(VIEWER_OUT) tui gen-service
+all: check-version $(DAEMON_OUT) $(VIEWER_OUT) tui gen-service manpages
 
 # Link Daemon Binary
 $(DAEMON_OUT): $(DAEMON_OBJS)
@@ -84,23 +104,39 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 # Utility Targets
 # -----------------------------------------------------------------------------
 
+# Check version format (SemVer-like) - Warn only
+check-version:
+	@echo "Building version: $(VERSION) (bare: $(VERSION_BARE))"
+	@echo "$(VERSION_BARE)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' || \
+		echo "WARNING: Version '$(VERSION_BARE)' does not look like strict SemVer."
+
 run: $(DAEMON_OUT)
 	$(DAEMON_OUT)
 
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -f man/*.1
 
 # Go TUI Viewer (requires Go toolchain)
 # Uses PIE for security, trimpath for reproducibility, vendor for offline builds
 tui:
 	@mkdir -p $(BUILD_DIR)
-	go build -buildmode=pie -trimpath -mod=vendor -o $(TUI_OUT) ./cmd/spiketrace-view
+	go build -buildmode=pie -trimpath -mod=vendor -ldflags "$(GO_LDFLAGS)" -o $(TUI_OUT) ./cmd/spiketrace-view
 
 vendor:
 	go mod tidy
 	go mod vendor
 	@echo "Vendor directory updated. Commit vendor/ changes."
 
+# Generate Man Pages from templates
+manpages: $(MAN_PAGES)
+
+man/%.1: man/%.1.in
+	sed 's|@VERSION@|$(VERSION_BARE)|g' $< > $@
+
+# -----------------------------------------------------------------------------
+# Install/Uninstall
+# -----------------------------------------------------------------------------
 
 install: all install-bin install-config install-man install-license install-systemd
 
@@ -120,15 +156,13 @@ install-config:
 		echo "Config exists, not overwriting: $(DESTDIR)$(SYSCONFDIR)/spiketrace/config.toml"; \
 	fi
 
-install-man:
+install-man: manpages
 	install -Dm644 man/spiketrace.1 $(DESTDIR)$(MANDIR)/man1/spiketrace.1
 	install -Dm644 man/spiketrace-view.1 $(DESTDIR)$(MANDIR)/man1/spiketrace-view.1
 
 install-license:
 	install -Dm644 LICENSE $(DESTDIR)$(LICENSEDIR)/LICENSE
 	install -Dm644 NOTICE $(DESTDIR)$(LICENSEDIR)/NOTICE
-
-install-systemd:
 
 gen-service:
 	@mkdir -p $(BUILD_DIR)
@@ -172,5 +206,5 @@ endif
 	@echo "State preserved at: $(STATEDIR)/"
 	@echo "To purge all data: rm -rf $(DESTDIR)$(SYSCONFDIR)/spiketrace $(STATEDIR)"
 
-.PHONY: all run clean install uninstall tui vendor
+.PHONY: all run clean install uninstall tui vendor check-version manpages
 .PHONY: install-bin install-config install-man install-license install-systemd

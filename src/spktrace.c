@@ -26,8 +26,10 @@
 /* Maximum context snapshots (must match ring buffer capacity) */
 #define MAX_CONTEXT_SNAPSHOTS 60
 
-/* Version string for --version flag */
-#define SPIKETRACE_VERSION "0.1.0"
+/* Version string is defined by Makefile via -DSPIKETRACE_VERSION */
+#ifndef SPIKETRACE_VERSION
+#define SPIKETRACE_VERSION "unknown"
+#endif
 
 /* Shutdown flag set by signal handler */
 static volatile sig_atomic_t shutdown_requested = 0;
