@@ -43,3 +43,10 @@ type MemAvailableMetric struct{}
 func (MemAvailableMetric) Name() string                      { return "Available" }
 func (MemAvailableMetric) Unit() string                      { return "MiB" }
 func (MemAvailableMetric) Extract(s *model.Snapshot) float64 { return float64(s.Mem.GetAvailableMiB()) }
+
+// IoWaitMetric extracts system-wide I/O wait percentage (schema v5+).
+type IoWaitMetric struct{}
+
+func (IoWaitMetric) Name() string                      { return "I/O Wait" }
+func (IoWaitMetric) Unit() string                      { return "%" }
+func (IoWaitMetric) Extract(s *model.Snapshot) float64 { return s.CPU.IoWaitPct }

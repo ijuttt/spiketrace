@@ -10,5 +10,6 @@ func DefaultMetrics() []Metric {
 		MemUsedMetric{},
 		SwapUsedMetric{},
 		MemAvailableMetric{},
+		IoWaitMetric{},
 	}
 }

@@ -14,6 +14,14 @@ type SpikeDump struct {
 	Snapshots       []Snapshot `json:"snapshots"`
 }
 
+// TriggerPolicy describes the cooldown grouping scope used by the daemon
+// when deciding whether to suppress repeated triggers (schema v4+).
+type TriggerPolicy struct {
+	Scope       string `json:"scope"`       // "per_process", "process_group", "parent", "system"
+	ScopeKey    int32  `json:"scope_key"`   // PID, PGID, PPID, or 0 depending on scope
+	Description string `json:"description"` // human-readable explanation
+}
+
 // Trigger contains information about what caused the spike dump.
 type Trigger struct {
 	Type            string  `json:"type"`
@@ -39,6 +47,9 @@ type Trigger struct {
 	SwapUsedMiB     uint64 `json:"swap_used_mib,omitempty"`
 	SwapBaselineMiB uint64 `json:"swap_baseline_mib,omitempty"`
 	SwapDeltaMiB    int64  `json:"swap_delta_mib,omitempty"`
+	// v4: trigger policy context for cooldown grouping
+	Policy              TriggerPolicy `json:"policy"`
+	OriginSnapshotIndex int           `json:"origin_snapshot_index"`
 }
 
 // Snapshot represents a point-in-time system state.

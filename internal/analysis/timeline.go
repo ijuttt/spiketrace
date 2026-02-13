@@ -76,3 +76,8 @@ func BuildCPUTimeline(dump *model.SpikeDump) Timeline {
 func BuildMemoryTimeline(dump *model.SpikeDump) Timeline {
 	return BuildTimeline(dump, MemUsedMetric{})
 }
+
+// BuildIoWaitTimeline is a convenience function for I/O wait timeline.
+func BuildIoWaitTimeline(dump *model.SpikeDump) Timeline {
+	return BuildTimeline(dump, IoWaitMetric{})
+}
