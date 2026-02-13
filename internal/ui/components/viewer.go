@@ -504,7 +504,11 @@ func (v Viewer) renderProcessList(title string, procs []model.ProcessEntry, byRS
 	// Synthetic "[others]" row for CPU list: shows hidden workload
 	if !byRSS && v.snapshot != nil {
 		sumCPU := 0.0
-		for _, p := range procs[:show] {
+		n := show
+		if n > len(procs) {
+			n = len(procs)
+		}
+		for _, p := range procs[:n] {
 			sumCPU += p.CPUPct
 		}
 		gap := v.snapshot.CPU.GlobalPct - sumCPU
