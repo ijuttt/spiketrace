@@ -225,7 +225,7 @@ func (v Viewer) View() string {
 			styles.ErrorStyle.Render("D") + "=Disk (Stuck) " +
 			styles.HighlightValueStyle.Render("Z") + "=Zombie " +
 			styles.ValueStyle.Render("T") + "=Stopped " +
-			"  │  ACT: ▁-█=CPU% ░=absent",
+			"  │  ACT: █=CPU% ░=absent",
 	)
 	b.WriteString(legend)
 
